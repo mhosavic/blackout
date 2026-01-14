@@ -5,9 +5,10 @@ Black out your Mac screen while keeping it awake. One command to toggle on/off.
 ## Features
 
 - **Blacks out screen** - Dims display to 0%
+- **Mutes audio** - Silences system audio
 - **Prevents sleep** - Keeps your Mac awake (no idle sleep)
 - **Toggle on/off** - Same command to enable and disable
-- **Remembers brightness** - Restores your original brightness when disabled
+- **Remembers state** - Restores your original brightness and volume when disabled
 - **macOS notifications** - Visual feedback when toggling
 - **Apple Silicon support** - M1/M2/M3/M4 compatible
 
@@ -51,16 +52,18 @@ Run the same command to toggle on/off.
 
 ### What happens when enabled
 
-1. Your current brightness is saved
+1. Your current brightness and volume are saved
 2. Screen dims to 0%
-3. `caffeinate` prevents idle sleep
-4. Notification confirms activation
+3. Audio is muted
+4. `caffeinate` prevents idle sleep
+5. Notification confirms activation
 
 ### What happens when disabled
 
 1. Original brightness is restored
-2. Sleep prevention is removed
-3. Notification confirms deactivation
+2. Audio is unmuted and volume restored
+3. Sleep prevention is removed
+4. Notification confirms deactivation
 
 ## Keyboard Shortcut
 
@@ -78,12 +81,13 @@ Run the same command to toggle on/off.
 │  Toggle based on ~/.blackout.state          │
 │                                             │
 │  OFF → Enable:                              │
-│    • Save current brightness                │
+│    • Save current brightness & volume       │
 │    • Start caffeinate -d                    │
 │    • Dim screen to 0%                       │
+│    • Mute audio                             │
 │                                             │
 │  ON → Disable:                              │
-│    • Restore saved brightness               │
+│    • Restore saved brightness & volume      │
 │    • Kill caffeinate                        │
 └─────────────────────────────────────────────┘
 ```
