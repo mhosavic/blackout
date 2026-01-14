@@ -64,16 +64,6 @@ Run the same command to toggle on/off.
 
 ## Keyboard Shortcut
 
-### iTerm2
-
-1. **Settings** → **Keys** → **Key Bindings**
-2. Click **+** to add a new binding
-3. Set your shortcut (e.g., `Cmd+Shift+\`)
-4. Action: **Run Command**
-5. Command: `~/bin/blackout`
-
-### Shortcuts app (other apps)
-
 1. Open **Shortcuts** app
 2. Create new shortcut → Add **Run Shell Script**
 3. Enter: `~/bin/blackout`
