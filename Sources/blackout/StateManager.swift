@@ -2,6 +2,7 @@ import Foundation
 
 struct BlackoutState: Codable {
     let originalBrightness: Double
+    let originalVolume: Int
     let caffeinatePID: Int32
     let activatedAt: Date
 }
@@ -38,9 +39,10 @@ struct StateManager {
     }
 
     /// Save the current state to disk
-    static func saveState(brightness: Double, pid: pid_t) {
+    static func saveState(brightness: Double, volume: Int, pid: pid_t) {
         let state = BlackoutState(
             originalBrightness: brightness,
+            originalVolume: volume,
             caffeinatePID: pid,
             activatedAt: Date()
         )
