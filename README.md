@@ -5,6 +5,7 @@ Black out your Mac screen while keeping it awake. One command to toggle on/off.
 ## Features
 
 - **Blacks out screen** - Dims display to 0%
+- **External monitor support** - Dims external monitors via DDC/CI (requires m1ddc)
 - **Mutes audio** - Silences system audio
 - **Prevents sleep** - Keeps your Mac awake (no idle sleep)
 - **Toggle on/off** - Same command to enable and disable
@@ -16,6 +17,7 @@ Black out your Mac screen while keeping it awake. One command to toggle on/off.
 
 - macOS 12.0 (Monterey) or later
 - Xcode Command Line Tools (`xcode-select --install`)
+- Optional: [m1ddc](https://github.com/waydabber/m1ddc) for external monitor support (`brew install m1ddc`)
 
 ## Installation
 
@@ -52,18 +54,20 @@ Run the same command to toggle on/off.
 
 ### What happens when enabled
 
-1. Your current brightness and volume are saved
+1. Your current brightness, volume, and external display luminance are saved
 2. Screen dims to 0%
-3. Audio is muted
-4. `caffeinate` prevents idle sleep
-5. Notification confirms activation
+3. External monitors dim to minimum (if m1ddc installed)
+4. Audio is muted
+5. `caffeinate` prevents idle sleep
+6. Notification confirms activation
 
 ### What happens when disabled
 
 1. Original brightness is restored
-2. Audio is unmuted and volume restored
-3. Sleep prevention is removed
-4. Notification confirms deactivation
+2. External monitor brightness is restored
+3. Audio is unmuted and volume restored
+4. Sleep prevention is removed
+5. Notification confirms deactivation
 
 ## Keyboard Shortcut
 
@@ -81,13 +85,14 @@ Run the same command to toggle on/off.
 │  Toggle based on ~/.blackout.state          │
 │                                             │
 │  OFF → Enable:                              │
-│    • Save current brightness & volume       │
+│    • Save brightness, volume & ext display  │
 │    • Start caffeinate -d                    │
-│    • Dim screen to 0%                       │
+│    • Dim built-in screen to 0%              │
+│    • Dim external monitors (via m1ddc)      │
 │    • Mute audio                             │
 │                                             │
 │  ON → Disable:                              │
-│    • Restore saved brightness & volume      │
+│    • Restore all saved settings             │
 │    • Kill caffeinate                        │
 └─────────────────────────────────────────────┘
 ```
