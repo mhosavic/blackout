@@ -6,6 +6,7 @@ import Foundation
 // Parse command-line arguments
 let args = CommandLine.arguments
 let skipExternal = args.contains("--no-external") || args.contains("-n")
+let skipMute = args.contains("--no-mute") || args.contains("-m")
 
 // Show help if requested
 if args.contains("--help") || args.contains("-h") {
@@ -15,6 +16,7 @@ if args.contains("--help") || args.contains("-h") {
     print("")
     print("Options:")
     print("  -n, --no-external  Skip dimming external monitors")
+    print("  -m, --no-mute      Skip muting audio")
     print("  -h, --help         Show this help message")
     print("")
     print("Running 'blackout' toggles blackout mode on/off.")
@@ -23,10 +25,10 @@ if args.contains("--help") || args.contains("-h") {
     exit(0)
 }
 
-func enable(skipExternal: Bool) {
+func enable(skipExternal: Bool, skipMute: Bool) {
     // Save current brightness, volume, and external display luminance
     let currentBrightness = BrightnessController.getBrightness()
-    let currentVolume = AudioController.getVolume()
+    let currentVolume = skipMute ? nil : AudioController.getVolume()
     let externalLuminance = skipExternal ? nil : ExternalDisplayController.getLuminance()
 
     // Start caffeinate to prevent sleep
@@ -43,7 +45,9 @@ func enable(skipExternal: Bool) {
     if !skipExternal {
         ExternalDisplayController.dim()
     }
-    AudioController.mute()
+    if !skipMute {
+        AudioController.mute()
+    }
 
     // Show notification
     NotificationManager.showEnabled()
@@ -55,7 +59,11 @@ func enable(skipExternal: Bool) {
     } else if skipExternal {
         print("  External display: skipped (--no-external)")
     }
-    print("  Original volume: \(currentVolume)%")
+    if let vol = currentVolume {
+        print("  Original volume: \(vol)%")
+    } else {
+        print("  Audio: skipped (--no-mute)")
+    }
     print("  Run 'blackout' again to disable")
 }
 
@@ -73,8 +81,10 @@ func disable() {
     if let extLum = state.externalLuminance {
         ExternalDisplayController.setLuminance(extLum)
     }
-    AudioController.unmute()
-    AudioController.setVolume(state.originalVolume)
+    if let vol = state.originalVolume {
+        AudioController.unmute()
+        AudioController.setVolume(vol)
+    }
 
     // Clear state file
     StateManager.clearState()
@@ -87,12 +97,14 @@ func disable() {
     if let extLum = state.externalLuminance {
         print("  External display restored to: \(extLum)%")
     }
-    print("  Volume restored to: \(state.originalVolume)%")
+    if let vol = state.originalVolume {
+        print("  Volume restored to: \(vol)%")
+    }
 }
 
 // Toggle based on current state
 if StateManager.isActive() {
     disable()
 } else {
-    enable(skipExternal: skipExternal)
+    enable(skipExternal: skipExternal, skipMute: skipMute)
 }
