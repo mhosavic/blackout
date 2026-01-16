@@ -3,11 +3,31 @@ import Foundation
 // Main entry point for blackout CLI tool
 // Running this command toggles blackout mode on/off
 
-func enable() {
+// Parse command-line arguments
+let args = CommandLine.arguments
+let skipExternal = args.contains("--no-external") || args.contains("-n")
+
+// Show help if requested
+if args.contains("--help") || args.contains("-h") {
+    print("blackout - Toggle screen blackout mode")
+    print("")
+    print("Usage: blackout [options]")
+    print("")
+    print("Options:")
+    print("  -n, --no-external  Skip dimming external monitors")
+    print("  -h, --help         Show this help message")
+    print("")
+    print("Running 'blackout' toggles blackout mode on/off.")
+    print("When enabled: dims screen, mutes audio, prevents sleep.")
+    print("Run again to restore original settings.")
+    exit(0)
+}
+
+func enable(skipExternal: Bool) {
     // Save current brightness, volume, and external display luminance
     let currentBrightness = BrightnessController.getBrightness()
     let currentVolume = AudioController.getVolume()
-    let externalLuminance = ExternalDisplayController.getLuminance()
+    let externalLuminance = skipExternal ? nil : ExternalDisplayController.getLuminance()
 
     // Start caffeinate to prevent sleep
     guard let pid = SleepController.preventSleep() else {
@@ -20,7 +40,9 @@ func enable() {
 
     // Dim screens and mute audio
     BrightnessController.dimScreen()
-    ExternalDisplayController.dim()
+    if !skipExternal {
+        ExternalDisplayController.dim()
+    }
     AudioController.mute()
 
     // Show notification
@@ -30,6 +52,8 @@ func enable() {
     print("  Original brightness: \(String(format: "%.0f", currentBrightness * 100))%")
     if let extLum = externalLuminance {
         print("  External display: \(extLum)%")
+    } else if skipExternal {
+        print("  External display: skipped (--no-external)")
     }
     print("  Original volume: \(currentVolume)%")
     print("  Run 'blackout' again to disable")
@@ -70,5 +94,5 @@ func disable() {
 if StateManager.isActive() {
     disable()
 } else {
-    enable()
+    enable(skipExternal: skipExternal)
 }
