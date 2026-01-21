@@ -69,4 +69,9 @@ struct ExternalDisplayController {
     static func dim() {
         setLuminance(0)
     }
+
+    /// Check if an external display is connected
+    static func isConnected() -> Bool {
+        return getLuminance() != nil
+    }
 }

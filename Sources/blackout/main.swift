@@ -6,7 +6,11 @@ import Foundation
 // Parse command-line arguments
 let args = CommandLine.arguments
 let skipExternal = args.contains("--no-external") || args.contains("-n")
-let skipMute = args.contains("--no-mute") || args.contains("-m")
+let noMuteFlag = args.contains("--no-mute") || args.contains("-m")
+
+// Auto-detect: skip muting if external monitor is connected (unless --no-mute forces it)
+let hasExternalDisplay = ExternalDisplayController.isConnected()
+let skipMute = noMuteFlag || hasExternalDisplay
 
 // Show help if requested
 if args.contains("--help") || args.contains("-h") {
@@ -21,6 +25,7 @@ if args.contains("--help") || args.contains("-h") {
     print("")
     print("Running 'blackout' toggles blackout mode on/off.")
     print("When enabled: dims screen, mutes audio, prevents sleep.")
+    print("Audio is automatically kept unmuted when an external monitor is detected.")
     print("Run again to restore original settings.")
     exit(0)
 }
@@ -61,8 +66,10 @@ func enable(skipExternal: Bool, skipMute: Bool) {
     }
     if let vol = currentVolume {
         print("  Original volume: \(vol)%")
-    } else {
+    } else if noMuteFlag {
         print("  Audio: skipped (--no-mute)")
+    } else if hasExternalDisplay {
+        print("  Audio: skipped (external monitor detected)")
     }
     print("  Run 'blackout' again to disable")
 }
