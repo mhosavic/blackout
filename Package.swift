@@ -13,6 +13,14 @@ let package = Package(
             linkerSettings: [
                 .unsafeFlags(["-F", "/System/Library/PrivateFrameworks", "-framework", "DisplayServices"])
             ]
+        ),
+        .executableTarget(
+            name: "blackout-daemon",
+            path: "Sources/blackout-daemon",
+            linkerSettings: [
+                .linkedFramework("Carbon"),
+                .linkedFramework("AppKit")
+            ]
         )
     ]
 )

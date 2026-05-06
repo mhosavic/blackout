@@ -12,6 +12,21 @@ if [ -f ~/.blackout.state ]; then
     fi
 fi
 
+# Stop and remove daemon
+LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.blackout.daemon.plist"
+if [ -f "$LAUNCH_AGENT" ]; then
+    echo "Stopping daemon..."
+    launchctl unload "$LAUNCH_AGENT" 2>/dev/null
+    rm -f "$LAUNCH_AGENT"
+    echo "Removed LaunchAgent"
+fi
+
+# Remove daemon directory
+if [ -d ~/.blackout ]; then
+    rm -rf ~/.blackout
+    echo "Removed ~/.blackout directory"
+fi
+
 # Remove binary
 if [ -f ~/bin/blackout ]; then
     rm -f ~/bin/blackout

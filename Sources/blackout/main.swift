@@ -8,6 +8,22 @@ let args = CommandLine.arguments
 let skipExternal = args.contains("--no-external") || args.contains("-n")
 let noMuteFlag = args.contains("--no-mute") || args.contains("-m")
 
+// Daemon commands
+if args.contains("--install") {
+    DaemonController.install()
+    exit(0)
+}
+
+if args.contains("--uninstall") {
+    DaemonController.uninstall()
+    exit(0)
+}
+
+if args.contains("--status") {
+    DaemonController.status()
+    exit(0)
+}
+
 // Auto-detect: skip muting if external monitor is connected (unless --no-mute forces it)
 let hasExternalDisplay = ExternalDisplayController.isConnected()
 let skipMute = noMuteFlag || hasExternalDisplay
@@ -23,10 +39,17 @@ if args.contains("--help") || args.contains("-h") {
     print("  -m, --no-mute      Skip muting audio")
     print("  -h, --help         Show this help message")
     print("")
+    print("Daemon commands:")
+    print("  --install          Install hotkey daemon (runs at login)")
+    print("  --uninstall        Remove hotkey daemon")
+    print("  --status           Show daemon status")
+    print("")
     print("Running 'blackout' toggles blackout mode on/off.")
     print("When enabled: dims screen, mutes audio, prevents sleep.")
     print("Audio is automatically kept unmuted when an external monitor is detected.")
     print("Run again to restore original settings.")
+    print("")
+    print("Hotkey (when daemon installed): ⌃⌥⌘\\ (Ctrl+Option+Cmd+Backslash)")
     exit(0)
 }
 
