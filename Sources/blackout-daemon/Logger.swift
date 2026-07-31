@@ -3,6 +3,7 @@ import Foundation
 struct Logger {
 
     private static let maxLogSize = 1_000_000 // 1MB
+    private static let timestampFormatter = ISO8601DateFormatter()
 
     private static var logFileURL: URL {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
@@ -11,7 +12,7 @@ struct Logger {
 
     /// Log a message with timestamp
     static func log(_ message: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = timestampFormatter.string(from: Date())
         let logLine = "[\(timestamp)] \(message)\n"
 
         rotateIfNeeded()

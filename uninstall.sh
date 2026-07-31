@@ -3,7 +3,14 @@
 
 echo "Uninstalling blackout..."
 
-# Stop any running caffeinate instance
+# Restore settings first if a session is active (toggles blackout off,
+# bringing back brightness, volume, and normal sleep)
+if [ -f ~/.blackout.state ] && command -v blackout >/dev/null 2>&1; then
+    echo "Restoring active blackout session..."
+    blackout || true
+fi
+
+# Fallback: stop any caffeinate instance the toggle did not clean up
 if [ -f ~/.blackout.state ]; then
     PID=$(grep caffeinatePID ~/.blackout.state | grep -o '[0-9]*')
     if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then

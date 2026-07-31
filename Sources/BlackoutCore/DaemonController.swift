@@ -1,11 +1,11 @@
 import Foundation
 
-struct DaemonController {
+public struct DaemonController {
 
     // MARK: - Install
 
     /// Install the daemon and LaunchAgent
-    static func install() {
+    public static func install() {
         print("Installing blackout daemon...")
 
         // 1. Find the daemon binary in the build directory
@@ -51,8 +51,9 @@ struct DaemonController {
             exit(1)
         }
 
-        // 5. Load the LaunchAgent
-        let loadResult = runLaunchctl(["load", PathManager.launchAgentPlist.path])
+        // 5. Load the LaunchAgent (unload first so reinstalls restart the daemon)
+        Shell.run("/bin/launchctl", ["unload", PathManager.launchAgentPlist.path])
+        let loadResult = Shell.run("/bin/launchctl", ["load", PathManager.launchAgentPlist.path]) ?? -1
         if loadResult == 0 {
             print("  Started daemon")
         } else {
@@ -71,14 +72,14 @@ struct DaemonController {
     // MARK: - Uninstall
 
     /// Uninstall the daemon and LaunchAgent
-    static func uninstall() {
+    public static func uninstall() {
         print("Uninstalling blackout daemon...")
 
         let fm = FileManager.default
 
         // 1. Unload LaunchAgent
         if fm.fileExists(atPath: PathManager.launchAgentPlist.path) {
-            let unloadResult = runLaunchctl(["unload", PathManager.launchAgentPlist.path])
+            let unloadResult = Shell.run("/bin/launchctl", ["unload", PathManager.launchAgentPlist.path]) ?? -1
             if unloadResult == 0 {
                 print("  Stopped daemon")
             }
@@ -99,7 +100,7 @@ struct DaemonController {
     // MARK: - Status
 
     /// Show daemon status
-    static func status() {
+    public static func status() {
         let fm = FileManager.default
 
         // Check if LaunchAgent is installed
@@ -136,6 +137,14 @@ struct DaemonController {
         }
         print("")
         print("Hotkey: ⌃⌥⌘\\ (Ctrl+Option+Cmd+Backslash)")
+
+        // Lid-sleep setup state
+        print("")
+        let lidReady = SleepController.isLidSetupInstalled()
+        print("Lid sleep prevention: \(lidReady ? "ready" : "not configured (run 'blackout --setup-lid')")")
+        if SleepController.isSleepDisabled() {
+            print("  Note: system sleep is currently disabled")
+        }
 
         // Show log tail if exists
         if fm.fileExists(atPath: PathManager.daemonLog.path) {
@@ -206,23 +215,5 @@ struct DaemonController {
         </dict>
         </plist>
         """
-    }
-
-    /// Run launchctl command
-    @discardableResult
-    private static func runLaunchctl(_ arguments: [String]) -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = arguments
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus
-        } catch {
-            return -1
-        }
     }
 }

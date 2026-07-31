@@ -36,13 +36,24 @@ func toggleBlackout() {
 
     let process = Process()
     process.executableURL = blackoutPath
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
+
+    // Capture output so failures are diagnosable from the log
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = pipe
 
     do {
         try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        Logger.info("Blackout toggled, exit code: \(process.terminationStatus)")
+
+        if process.terminationStatus == 0 {
+            Logger.info("Blackout toggled")
+        } else {
+            let output = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            Logger.error("Blackout exited \(process.terminationStatus): \(output)")
+        }
     } catch {
         Logger.error("Failed to run blackout: \(error)")
     }
@@ -68,19 +79,21 @@ func removePIDFile() {
 
 // MARK: - Signal Handling
 
-func setupSignalHandlers() {
-    // Handle SIGTERM (from launchctl unload)
-    signal(SIGTERM) { _ in
-        Logger.info("Received SIGTERM, shutting down")
-        removePIDFile()
-        exit(0)
-    }
-
-    // Handle SIGINT (Ctrl+C)
-    signal(SIGINT) { _ in
-        Logger.info("Received SIGINT, shutting down")
-        removePIDFile()
-        exit(0)
+/// Shutdown signals are handled via DispatchSource because raw signal()
+/// handlers may not safely touch files or Foundation (async-signal-safety).
+/// The sources must stay referenced for the lifetime of the daemon.
+func makeSignalSources() -> [DispatchSourceSignal] {
+    let signals: [(Int32, String)] = [(SIGTERM, "SIGTERM"), (SIGINT, "SIGINT")]
+    return signals.map { sig, name in
+        signal(sig, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+        source.setEventHandler {
+            Logger.info("Received \(name), shutting down")
+            removePIDFile()
+            exit(0)
+        }
+        source.resume()
+        return source
     }
 }
 
@@ -89,8 +102,8 @@ func setupSignalHandlers() {
 Logger.info("Blackout daemon starting")
 Logger.info("PID: \(ProcessInfo.processInfo.processIdentifier)")
 
-// Set up signal handlers
-setupSignalHandlers()
+// Set up signal handlers (kept referenced until exit)
+let signalSources = makeSignalSources()
 
 // Write PID file
 writePIDFile()

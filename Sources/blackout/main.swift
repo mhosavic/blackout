@@ -1,11 +1,12 @@
 import Foundation
+import BlackoutCore
 
 // Main entry point for blackout CLI tool
 // Running this command toggles blackout mode on/off
 
 // Parse command-line arguments
 let args = CommandLine.arguments
-let skipExternal = args.contains("--no-external") || args.contains("-n")
+let noExternalFlag = args.contains("--no-external") || args.contains("-n")
 let noMuteFlag = args.contains("--no-mute") || args.contains("-m")
 let noLidFlag = args.contains("--no-lid") || args.contains("-l")
 
@@ -30,10 +31,6 @@ if args.contains("--status") {
     DaemonController.status()
     exit(0)
 }
-
-// Auto-detect: skip muting if external monitor is connected (unless --no-mute forces it)
-let hasExternalDisplay = ExternalDisplayController.isConnected()
-let skipMute = noMuteFlag || hasExternalDisplay
 
 // Show help if requested
 if args.contains("--help") || args.contains("-h") {
@@ -65,11 +62,17 @@ if args.contains("--help") || args.contains("-h") {
     exit(0)
 }
 
-func enable(skipExternal: Bool, skipMute: Bool, skipLid: Bool) {
+func enable(noExternal: Bool, noMute: Bool, noLid: Bool) {
+    // Probe the external display once; the result drives both dimming and
+    // the decision to keep audio unmuted (sound may play through the monitor)
+    let detectedLuminance = ExternalDisplayController.getLuminance()
+    let hasExternalDisplay = detectedLuminance != nil
+    let skipMute = noMute || hasExternalDisplay
+
     // Save current brightness, volume, and external display luminance
     let currentBrightness = BrightnessController.getBrightness()
     let currentVolume = skipMute ? nil : AudioController.getVolume()
-    let externalLuminance = skipExternal ? nil : ExternalDisplayController.getLuminance()
+    let externalLuminance = noExternal ? nil : detectedLuminance
 
     // Start caffeinate to prevent sleep
     guard let pid = SleepController.preventSleep() else {
@@ -81,7 +84,7 @@ func enable(skipExternal: Bool, skipMute: Bool, skipLid: Bool) {
     // (e.g. by the user via pmset), leave it alone so disable() won't undo it
     var sleepDisabledByUs = false
     var sleepAlreadyDisabled = false
-    if !skipLid {
+    if !noLid {
         if SleepController.isSleepDisabled() {
             sleepAlreadyDisabled = true
         } else {
@@ -89,12 +92,20 @@ func enable(skipExternal: Bool, skipMute: Bool, skipLid: Bool) {
         }
     }
 
-    // Save state for later restoration
-    StateManager.saveState(brightness: currentBrightness, volume: currentVolume, externalLuminance: externalLuminance, pid: pid, sleepDisabled: sleepDisabledByUs)
+    // Save state before changing anything visible; without it the session
+    // could never be restored, so undo and bail if the write fails
+    guard StateManager.saveState(brightness: currentBrightness, volume: currentVolume, externalLuminance: externalLuminance, pid: pid, sleepDisabled: sleepDisabledByUs) else {
+        SleepController.allowSleep(pid: pid)
+        if sleepDisabledByUs {
+            _ = SleepController.restoreLidSleep()
+        }
+        print("Failed to save state — blackout not enabled")
+        exit(1)
+    }
 
     // Dim screens and mute audio
     BrightnessController.dimScreen()
-    if !skipExternal {
+    if !noExternal {
         ExternalDisplayController.dim()
     }
     if !skipMute {
@@ -108,12 +119,12 @@ func enable(skipExternal: Bool, skipMute: Bool, skipLid: Bool) {
     print("  Original brightness: \(String(format: "%.0f", currentBrightness * 100))%")
     if let extLum = externalLuminance {
         print("  External display: \(extLum)%")
-    } else if skipExternal {
+    } else if noExternal {
         print("  External display: skipped (--no-external)")
     }
     if let vol = currentVolume {
         print("  Original volume: \(vol)%")
-    } else if noMuteFlag {
+    } else if noMute {
         print("  Audio: skipped (--no-mute)")
     } else if hasExternalDisplay {
         print("  Audio: skipped (external monitor detected)")
@@ -122,7 +133,7 @@ func enable(skipExternal: Bool, skipMute: Bool, skipLid: Bool) {
         print("  Lid sleep: disabled (safe to close the lid)")
     } else if sleepAlreadyDisabled {
         print("  Lid sleep: already disabled system-wide")
-    } else if noLidFlag {
+    } else if noLid {
         print("  Lid sleep: skipped (--no-lid)")
     } else {
         print("  Lid sleep: unavailable (run 'blackout --setup-lid' once to enable)")
@@ -130,14 +141,14 @@ func enable(skipExternal: Bool, skipMute: Bool, skipLid: Bool) {
     print("  Run 'blackout' again to disable")
 }
 
-func disable() {
-    guard let state = StateManager.loadState() else {
-        print("No active blackout session found")
-        exit(1)
+func disable(state: BlackoutState) {
+    // Stop caffeinate to allow sleep — unless it already died (crash/reboot),
+    // in which case the PID may have been reused by another process
+    if SleepController.isProcessRunning(pid: state.caffeinatePID) {
+        SleepController.allowSleep(pid: state.caffeinatePID)
+    } else {
+        print("Recovering stale session (caffeinate was no longer running)")
     }
-
-    // Stop caffeinate to allow sleep
-    SleepController.allowSleep(pid: state.caffeinatePID)
 
     // Re-enable lid-close sleep if we disabled it
     var lidSleepRestored = false
@@ -177,9 +188,16 @@ func disable() {
     }
 }
 
-// Toggle based on current state
-if StateManager.isActive() {
-    disable()
+// Toggle based on saved state
+if StateManager.hasState() {
+    if let state = StateManager.loadState() {
+        disable(state: state)
+    } else {
+        print("State file is corrupt — clearing it.")
+        print("Brightness, volume, or sleep settings may need manual restoring.")
+        StateManager.clearState()
+        exit(1)
+    }
 } else {
-    enable(skipExternal: skipExternal, skipMute: skipMute, skipLid: noLidFlag)
+    enable(noExternal: noExternalFlag, noMute: noMuteFlag, noLid: noLidFlag)
 }

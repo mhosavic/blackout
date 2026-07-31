@@ -49,24 +49,6 @@ struct PathManager {
         launchAgentsDirectory.appendingPathComponent("\(launchAgentLabel).plist")
     }
 
-    // MARK: - Blackout Binary
-
-    /// Path to the main blackout binary (searches common locations)
-    static var blackoutBinary: URL? {
-        let searchPaths = [
-            homeDirectory.appendingPathComponent("bin/blackout"),
-            URL(fileURLWithPath: "/usr/local/bin/blackout"),
-            URL(fileURLWithPath: "/opt/homebrew/bin/blackout")
-        ]
-
-        for path in searchPaths {
-            if FileManager.default.isExecutableFile(atPath: path.path) {
-                return path
-            }
-        }
-        return nil
-    }
-
     // MARK: - Directory Management
 
     /// Create ~/.blackout/ directory if it doesn't exist
