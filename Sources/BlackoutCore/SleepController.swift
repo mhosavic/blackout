@@ -80,6 +80,14 @@ public struct SleepController {
     /// disablesleep without a password. Interactive (sudo asks for the
     /// user's password).
     public static func setupLid() {
+        // sudo prompts on the controlling terminal; fail early with a clear
+        // message when there is none (e.g. run from a script or IDE shell)
+        guard isatty(STDIN_FILENO) == 1 else {
+            print("Error: --setup-lid needs an interactive terminal so sudo can ask for your password.")
+            print("Run 'blackout --setup-lid' directly in Terminal.")
+            exit(1)
+        }
+
         let sudoersPath = "/etc/sudoers.d/blackout"
         let rule = sudoersRule(for: NSUserName())
 
