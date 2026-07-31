@@ -81,12 +81,15 @@ func removePIDFile() {
 
 /// Shutdown signals are handled via DispatchSource because raw signal()
 /// handlers may not safely touch files or Foundation (async-signal-safety).
-/// The sources must stay referenced for the lifetime of the daemon.
+/// They run on a dedicated queue, not main, so the daemon stays killable
+/// even if the main thread is ever blocked. The sources must stay
+/// referenced for the lifetime of the daemon.
 func makeSignalSources() -> [DispatchSourceSignal] {
+    let signalQueue = DispatchQueue(label: "com.blackout.daemon.signals")
     let signals: [(Int32, String)] = [(SIGTERM, "SIGTERM"), (SIGINT, "SIGINT")]
     return signals.map { sig, name in
         signal(sig, SIG_IGN)
-        let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+        let source = DispatchSource.makeSignalSource(signal: sig, queue: signalQueue)
         source.setEventHandler {
             Logger.info("Received \(name), shutting down")
             removePIDFile()

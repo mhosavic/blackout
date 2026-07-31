@@ -8,6 +8,12 @@ public struct SleepController {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
         process.arguments = ["-d"]  // Prevent display sleep
+        // Detach stdio: caffeinate outlives us, and inheriting our stdout
+        // would hold open any pipe a parent (e.g. the hotkey daemon) is
+        // reading to EOF, deadlocking it for the whole session
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
 
         do {
             try process.run()
