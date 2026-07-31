@@ -5,6 +5,8 @@ struct BlackoutState: Codable {
     let originalVolume: Int?
     let externalLuminance: Int?
     let caffeinatePID: Int32
+    // Optional so state files written by older versions still decode
+    let sleepDisabled: Bool?
     let activatedAt: Date
 }
 
@@ -40,12 +42,13 @@ struct StateManager {
     }
 
     /// Save the current state to disk
-    static func saveState(brightness: Double, volume: Int?, externalLuminance: Int?, pid: pid_t) {
+    static func saveState(brightness: Double, volume: Int?, externalLuminance: Int?, pid: pid_t, sleepDisabled: Bool) {
         let state = BlackoutState(
             originalBrightness: brightness,
             originalVolume: volume,
             externalLuminance: externalLuminance,
             caffeinatePID: pid,
+            sleepDisabled: sleepDisabled,
             activatedAt: Date()
         )
 

@@ -9,6 +9,7 @@ Black out your Mac screen while keeping it awake. One command to toggle on/off.
 - **External monitor support** - Dims external monitors via DDC/CI (requires m1ddc)
 - **Smart audio muting** - Mutes audio, but auto-skips when external monitor is detected
 - **Prevents sleep** - Keeps your Mac awake (no idle sleep)
+- **Survives lid close** - Processes keep running with the lid shut (after one-time `--setup-lid`)
 - **Toggle on/off** - Same command to enable and disable
 - **Remembers state** - Restores your original brightness and volume when disabled
 - **macOS notifications** - Visual feedback when toggling
@@ -49,6 +50,23 @@ blackout --install
 
 This installs a lightweight background daemon that listens for `⌃⌥⌘\` globally. The daemon starts automatically at login.
 
+### Enable lid-close sleep prevention (optional, one-time)
+
+```bash
+blackout --setup-lid
+```
+
+macOS puts the Mac to sleep when the lid closes, even with `caffeinate` running — only `sudo pmset -a disablesleep` can override it, and that needs root. This one-time setup asks for your password and writes `/etc/sudoers.d/blackout`, allowing exactly two commands to run without a password:
+
+```
+pmset -a disablesleep 1
+pmset -a disablesleep 0
+```
+
+Nothing else is granted. After setup, every blackout activation disables lid-close sleep and every deactivation restores it — including via the hotkey. Without setup, blackout still works and simply reports `Lid sleep: unavailable`.
+
+> **Warning:** while blackout is active, closing the lid keeps the Mac fully awake — including in a backpack. Watch for heat and battery drain, and toggle blackout off before packing it away.
+
 ## Usage
 
 ```bash
@@ -64,6 +82,7 @@ Run the same command to toggle on/off.
 |------|-------------|
 | `-n`, `--no-external` | Skip dimming external monitors |
 | `-m`, `--no-mute` | Skip muting audio |
+| `-l`, `--no-lid` | Skip disabling lid-close sleep |
 | `-h`, `--help` | Show help message |
 
 ### Daemon commands
@@ -73,6 +92,7 @@ Run the same command to toggle on/off.
 | `--install` | Install hotkey daemon (runs at login) |
 | `--uninstall` | Remove hotkey daemon |
 | `--status` | Show daemon status and recent logs |
+| `--setup-lid` | One-time setup for lid-close sleep prevention |
 
 ### What happens when enabled
 
@@ -81,14 +101,15 @@ Run the same command to toggle on/off.
 3. External monitors dim to minimum (if m1ddc installed)
 4. Audio is muted (skipped if external monitor detected)
 5. `caffeinate` prevents idle sleep
-6. Notification confirms activation
+6. Lid-close sleep is disabled (if `--setup-lid` was run; skipped if sleep was already disabled system-wide)
+7. Notification confirms activation
 
 ### What happens when disabled
 
 1. Original brightness is restored
 2. External monitor brightness is restored
 3. Audio is unmuted and volume restored (if it was muted)
-4. Sleep prevention is removed
+4. Sleep prevention is removed and lid-close sleep re-enabled
 5. Notification confirms deactivation
 
 ## Keyboard Shortcut
@@ -158,6 +179,7 @@ If you prefer not to use the daemon:
 | `~/.blackout/daemon.log` | Daemon log file |
 | `~/.blackout/daemon.pid` | Daemon process ID |
 | `~/Library/LaunchAgents/com.blackout.daemon.plist` | LaunchAgent for auto-start |
+| `/etc/sudoers.d/blackout` | Passwordless rule for `pmset disablesleep` (from `--setup-lid`) |
 
 ## Troubleshooting
 
@@ -220,11 +242,28 @@ brightness 1.0
 # Press F2 (or fn+F2) repeatedly
 ```
 
+### Mac won't sleep after a crash
+
+If blackout crashed while active with lid-sleep prevention on, sleep stays disabled (the setting survives reboots). Check and reset with:
+
+```bash
+pmset -g | grep SleepDisabled   # 1 = sleep disabled
+sudo pmset -a disablesleep 0
+```
+
+### Lid sleep shows "unavailable"
+
+Run the one-time setup:
+
+```bash
+blackout --setup-lid
+```
+
 ## Limitations
 
 Cannot prevent sleep from:
-- Closing laptop lid
-- Apple menu → Sleep
+- Closing laptop lid *before* `--setup-lid` has been run
+- Apple menu → Sleep (greyed out while lid sleep is disabled)
 - Low battery
 - Thermal emergency
 
@@ -249,7 +288,11 @@ rm -rf ~/.blackout
 # 3. Stop any active blackout session
 pkill -f "caffeinate -d"
 
-# 4. Remove binary and state
+# 4. Re-enable sleep and remove the sudoers rule (if --setup-lid was used)
+sudo pmset -a disablesleep 0
+sudo rm -f /etc/sudoers.d/blackout
+
+# 5. Remove binary and state
 rm -f ~/bin/blackout
 rm -f ~/.blackout.state
 ```

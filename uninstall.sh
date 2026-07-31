@@ -12,6 +12,18 @@ if [ -f ~/.blackout.state ]; then
     fi
 fi
 
+# Re-enable system sleep if it was left disabled
+if pmset -g | grep -q "SleepDisabled.*1"; then
+    echo "Re-enabling system sleep (password may be required)..."
+    sudo pmset -a disablesleep 0
+fi
+
+# Remove passwordless sudo rule for pmset
+if [ -f /etc/sudoers.d/blackout ]; then
+    echo "Removing /etc/sudoers.d/blackout (password may be required)..."
+    sudo rm -f /etc/sudoers.d/blackout
+fi
+
 # Stop and remove daemon
 LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.blackout.daemon.plist"
 if [ -f "$LAUNCH_AGENT" ]; then
