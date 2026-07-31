@@ -17,7 +17,7 @@ Black out your Mac screen while keeping it awake. One command to toggle on/off.
 
 ## Requirements
 
-- macOS 12.0 (Monterey) or later
+- macOS 14.0 (Sonoma) or later
 - Xcode Command Line Tools (`xcode-select --install`)
 - Optional: [m1ddc](https://github.com/waydabber/m1ddc) for external monitor support (`brew install m1ddc`)
 
@@ -143,7 +143,7 @@ If you prefer not to use the daemon:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                        blackout                               │
+│                        blackout                              │
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │
 │  CLI Mode                      Daemon Mode                   │
@@ -161,11 +161,13 @@ If you prefer not to use the daemon:
 │  • Save brightness,        • Restore all                     │
 │    volume & ext display      saved settings                  │
 │  • Start caffeinate -d     • Kill caffeinate                 │
+│  • Disable lid sleep**     • Re-enable lid sleep             │
 │  • Dim built-in to 0%                                        │
 │  • Dim external (m1ddc)                                      │
 │  • Mute audio*                                               │
 │                                                              │
 │  *Audio auto-skipped when external monitor detected          │
+│  **After one-time 'blackout --setup-lid'                     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -230,16 +232,17 @@ If you prefer not to use the daemon:
    m1ddc set luminance 50
    ```
 
-### Screen stays black after disable
+### Screen stays black after a crash
 
-This can happen if blackout crashes. To recover:
+Just run `blackout` again. If a saved session exists — even one whose
+caffeinate process died in a crash or reboot — blackout restores from it
+instead of re-enabling. If the state file itself was lost:
 
 ```bash
 # Restore brightness manually
 brightness 1.0
 
-# Or use System Preferences keyboard shortcut
-# Press F2 (or fn+F2) repeatedly
+# Or use the keyboard: press F2 (or fn+F2) repeatedly
 ```
 
 ### Mac won't sleep after a crash
@@ -266,6 +269,20 @@ Cannot prevent sleep from:
 - Apple menu → Sleep (greyed out while lid sleep is disabled)
 - Low battery
 - Thermal emergency
+
+## Development
+
+```bash
+swift build                 # debug build
+swift run blackout-tests    # run the test suite
+swift build -c release      # release build
+```
+
+Code is organized as a `BlackoutCore` library (all logic), with thin
+`blackout` and `blackout-daemon` executables on top. Tests use
+[Swift Testing](https://developer.apple.com/documentation/testing) via the
+dedicated `blackout-tests` runner, because `swift test` cannot execute Swift
+Testing bundles with Command Line Tools alone (no full Xcode required this way).
 
 ## Uninstall
 
