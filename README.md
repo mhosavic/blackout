@@ -6,7 +6,7 @@ Black out your Mac screen while keeping it awake. One command to toggle on/off.
 
 - **Blacks out screen** - Dims display to 0%
 - **Global hotkey** - Press `⌃⌥⌘\` to toggle from anywhere (daemon required)
-- **External monitor support** - Dims external monitors via DDC/CI (requires m1ddc)
+- **External monitor aware** - A connected monitor stays lit as your working screen (dim it too with `--dim-external`, requires m1ddc)
 - **Smart audio muting** - Mutes audio, but auto-skips when external monitor is detected
 - **Prevents sleep** - Keeps your Mac awake (no idle sleep)
 - **Survives lid close** - Processes keep running with the lid shut (after one-time `--setup-lid`)
@@ -80,7 +80,7 @@ Run the same command to toggle on/off.
 
 | Flag | Description |
 |------|-------------|
-| `-n`, `--no-external` | Skip dimming external monitors |
+| `-e`, `--dim-external` | Also dim external monitors (left untouched by default) |
 | `-m`, `--no-mute` | Skip muting audio |
 | `-l`, `--no-lid` | Skip disabling lid-close sleep |
 | `-h`, `--help` | Show help message |
@@ -96,9 +96,9 @@ Run the same command to toggle on/off.
 
 ### What happens when enabled
 
-1. Your current brightness, volume, and external display luminance are saved
+1. Your current brightness and volume are saved
 2. Screen dims to 0%
-3. External monitors dim to minimum (if m1ddc installed)
+3. External monitors stay untouched — they remain your working screen (dim them too with `--dim-external`, requires m1ddc)
 4. Audio is muted (skipped if external monitor detected)
 5. `caffeinate` prevents idle sleep
 6. Lid-close sleep is disabled (if `--setup-lid` was run; skipped if sleep was already disabled system-wide)
@@ -107,7 +107,7 @@ Run the same command to toggle on/off.
 ### What happens when disabled
 
 1. Original brightness is restored
-2. External monitor brightness is restored
+2. External monitor brightness is restored (if it was dimmed)
 3. Audio is unmuted and volume restored (if it was muted)
 4. Sleep prevention is removed and lid-close sleep re-enabled
 5. Notification confirms deactivation
@@ -163,7 +163,7 @@ If you prefer not to use the daemon:
 │  • Start caffeinate -d     • Kill caffeinate                 │
 │  • Disable lid sleep**     • Re-enable lid sleep             │
 │  • Dim built-in to 0%                                        │
-│  • Dim external (m1ddc)                                      │
+│  • Dim external with -e                                      │
 │  • Mute audio*                                               │
 │                                                              │
 │  *Audio auto-skipped when external monitor detected          │
@@ -218,6 +218,10 @@ If you prefer not to use the daemon:
    ```
 
 ### External monitor not dimming
+
+By default a connected monitor is deliberately left on — it's assumed to be
+your working screen (e.g. lid closed on a dock). Pass `--dim-external` to
+dim it too. If that still does nothing:
 
 1. Install m1ddc:
    ```bash

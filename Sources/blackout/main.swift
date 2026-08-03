@@ -6,7 +6,7 @@ import BlackoutCore
 
 // Parse command-line arguments
 let args = CommandLine.arguments
-let noExternalFlag = args.contains("--no-external") || args.contains("-n")
+let dimExternalFlag = args.contains("--dim-external") || args.contains("-e")
 let noMuteFlag = args.contains("--no-mute") || args.contains("-m")
 let noLidFlag = args.contains("--no-lid") || args.contains("-l")
 
@@ -39,7 +39,7 @@ if args.contains("--help") || args.contains("-h") {
     print("Usage: blackout [options]")
     print("")
     print("Options:")
-    print("  -n, --no-external  Skip dimming external monitors")
+    print("  -e, --dim-external Also dim external monitors (untouched by default)")
     print("  -m, --no-mute      Skip muting audio")
     print("  -l, --no-lid       Skip disabling lid-close sleep")
     print("  -h, --help         Show this help message")
@@ -62,9 +62,10 @@ if args.contains("--help") || args.contains("-h") {
     exit(0)
 }
 
-func enable(noExternal: Bool, noMute: Bool, noLid: Bool) {
-    // Probe the external display once; the result drives both dimming and
-    // the decision to keep audio unmuted (sound may play through the monitor)
+func enable(dimExternal: Bool, noMute: Bool, noLid: Bool) {
+    // Probe the external display once. When one is connected it stays the
+    // user's working screen: audio stays on and it is not dimmed unless
+    // --dim-external asks for the old dim-everything behavior
     let detectedLuminance = ExternalDisplayController.getLuminance()
     let hasExternalDisplay = detectedLuminance != nil
     let skipMute = noMute || hasExternalDisplay
@@ -72,7 +73,7 @@ func enable(noExternal: Bool, noMute: Bool, noLid: Bool) {
     // Save current brightness, volume, and external display luminance
     let currentBrightness = BrightnessController.getBrightness()
     let currentVolume = skipMute ? nil : AudioController.getVolume()
-    let externalLuminance = noExternal ? nil : detectedLuminance
+    let externalLuminance = dimExternal ? detectedLuminance : nil
 
     // Start caffeinate to prevent sleep
     guard let pid = SleepController.preventSleep() else {
@@ -105,7 +106,7 @@ func enable(noExternal: Bool, noMute: Bool, noLid: Bool) {
 
     // Dim screens and mute audio
     BrightnessController.dimScreen()
-    if !noExternal {
+    if externalLuminance != nil {
         ExternalDisplayController.dim()
     }
     if !skipMute {
@@ -118,9 +119,9 @@ func enable(noExternal: Bool, noMute: Bool, noLid: Bool) {
     print("Blackout: ENABLED")
     print("  Original brightness: \(String(format: "%.0f", currentBrightness * 100))%")
     if let extLum = externalLuminance {
-        print("  External display: \(extLum)%")
-    } else if noExternal {
-        print("  External display: skipped (--no-external)")
+        print("  External display: dimmed (was \(extLum)%)")
+    } else if hasExternalDisplay {
+        print("  External display: left on (--dim-external to dim)")
     }
     if let vol = currentVolume {
         print("  Original volume: \(vol)%")
@@ -199,5 +200,5 @@ if StateManager.hasState() {
         exit(1)
     }
 } else {
-    enable(noExternal: noExternalFlag, noMute: noMuteFlag, noLid: noLidFlag)
+    enable(dimExternal: dimExternalFlag, noMute: noMuteFlag, noLid: noLidFlag)
 }
