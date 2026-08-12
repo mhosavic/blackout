@@ -26,4 +26,14 @@ public struct NotificationManager {
             message: "Brightness restored."
         )
     }
+
+    /// Shown when re-enabling sleep failed. The lid watcher's stdout goes to
+    /// /dev/null, so on the auto-disable path this notification is the only way
+    /// the user ever learns their Mac will not sleep.
+    public static func showSleepRestoreFailed() {
+        showNotification(
+            title: "Blackout",
+            message: "Could not re-enable sleep. Run: sudo pmset -a disablesleep 0"
+        )
+    }
 }
