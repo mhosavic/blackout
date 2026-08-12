@@ -65,4 +65,130 @@ public struct LidLockController {
         lock()
         return true
     }
+
+    // MARK: - Watcher process
+
+    /// Spawn the detached watcher that reacts to the lid and the unlock.
+    /// stdio goes to /dev/null: the hotkey daemon reads blackout's stdout to
+    /// EOF, so a surviving child holding that pipe would deadlock it for the
+    /// whole session — the same trap already fixed for caffeinate.
+    public static func startWatcher() -> pid_t? {
+        guard let executable = Bundle.main.executablePath else { return nil }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["--lid-watch"]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            return process.processIdentifier
+        } catch {
+            return nil
+        }
+    }
+
+    /// Stop a watcher started by startWatcher()
+    public static func stopWatcher(pid: pid_t) {
+        kill(pid, SIGTERM)
+    }
+
+    /// Watch the lid and the lock screen, calling back on each event. Blocks on
+    /// the current run loop and does not return while watching; returns false
+    /// if the notification could not be registered.
+    @discardableResult
+    public static func watch(
+        onLidClose: @escaping () -> Void,
+        onLidOpen: @escaping () -> Void,
+        onUnlock: @escaping () -> Void
+    ) -> Bool {
+        let watcher = LidWatcher(onLidClose: onLidClose, onLidOpen: onLidOpen, onUnlock: onUnlock)
+        guard watcher.start() else { return false }
+
+        withExtendedLifetime(watcher) {
+            CFRunLoopRun()
+        }
+        return true
+    }
+}
+
+/// Holds the IOKit subscription and the previous lid state. A class because the
+/// C callback carries an opaque context pointer, and the state must survive
+/// between callbacks.
+private final class LidWatcher {
+
+    private let onLidClose: () -> Void
+    private let onLidOpen: () -> Void
+    private let onUnlock: () -> Void
+    private var previous: Bool?
+    private var notification: io_object_t = 0
+
+    init(
+        onLidClose: @escaping () -> Void,
+        onLidOpen: @escaping () -> Void,
+        onUnlock: @escaping () -> Void
+    ) {
+        self.onLidClose = onLidClose
+        self.onLidOpen = onLidOpen
+        self.onUnlock = onUnlock
+        // Seed from the current state so enabling blackout with the lid
+        // already shut does not lock immediately
+        self.previous = LidLockController.isLidClosed()
+    }
+
+    func start() -> Bool {
+        // Unlocking is what ends a session, so it is watched separately from
+        // the lid: anyone can lift a lid, only the owner can authenticate
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.onUnlock()
+        }
+
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard service != 0 else { return false }
+        defer { IOObjectRelease(service) }
+
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else { return false }
+        CFRunLoopAddSource(
+            CFRunLoopGetCurrent(),
+            IONotificationPortGetRunLoopSource(port).takeUnretainedValue(),
+            .defaultMode
+        )
+
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        let status = IOServiceAddInterestNotification(
+            port,
+            service,
+            kIOGeneralInterest,
+            { context, _, messageType, _ in
+                guard let context else { return }
+                Unmanaged<LidWatcher>.fromOpaque(context)
+                    .takeUnretainedValue()
+                    .handle(messageType: messageType)
+            },
+            context,
+            &notification
+        )
+
+        return status == KERN_SUCCESS
+    }
+
+    private func handle(messageType: UInt32) {
+        guard messageType == LidLockController.clamshellStateChanged,
+              let current = LidLockController.isLidClosed() else { return }
+
+        let transition = LidLockController.transition(previous: previous, current: current)
+        previous = current
+
+        switch transition {
+        case .closed: onLidClose()
+        case .opened: onLidOpen()
+        case .none: break
+        }
+    }
 }

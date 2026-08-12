@@ -29,6 +29,24 @@ struct LidLockControllerTests {
         #expect(LidLockController.transition(previous: nil, current: false) == LidLockController.LidTransition.none)
     }
 
+    // MARK: - Watcher process
+
+    /// startWatcher() is deliberately not tested: it spawns
+    /// Bundle.main.executablePath, which in the test binary is blackout-tests
+    /// itself. Only the teardown half is exercised here.
+    @Test func stopWatcherTerminatesTheProcess() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        #expect(SleepController.isProcessRunning(pid: process.processIdentifier))
+
+        LidLockController.stopWatcher(pid: process.processIdentifier)
+        process.waitUntilExit()
+
+        #expect(!SleepController.isProcessRunning(pid: process.processIdentifier))
+    }
+
     // MARK: - Environment
 
     /// Environment assertion, not a logic test: this feature only makes sense
