@@ -37,4 +37,32 @@ public struct LidLockController {
         guard let previous, previous != current else { return .none }
         return current ? .closed : .opened
     }
+
+    // MARK: - Locking
+
+    /// SACLockScreenImmediate is the same lock as ⌃⌘Q: immediate regardless of
+    /// the "require password after…" grace period, Touch ID still unlocks, and
+    /// every process keeps running. Private API, so it is resolved at runtime
+    /// and its absence degrades to a reported warning rather than a crash.
+    /// Resolved once — the handle is deliberately never closed, since the
+    /// function pointer stays live for the life of the process.
+    private static let lockFunction: (@convention(c) () -> Void)? = {
+        let path = "/System/Library/PrivateFrameworks/login.framework/login"
+        guard let handle = dlopen(path, RTLD_LAZY),
+              let symbol = dlsym(handle, "SACLockScreenImmediate") else { return nil }
+        return unsafeBitCast(symbol, to: (@convention(c) () -> Void).self)
+    }()
+
+    /// Whether the screen can be locked, without locking it
+    public static func isLockAvailable() -> Bool {
+        return lockFunction != nil
+    }
+
+    /// Lock the screen immediately. Returns false if the symbol is unavailable.
+    @discardableResult
+    public static func lockScreen() -> Bool {
+        guard let lock = lockFunction else { return false }
+        lock()
+        return true
+    }
 }

@@ -37,4 +37,11 @@ struct LidLockControllerTests {
     @Test func lidStateIsReadableOnThisMachine() {
         #expect(LidLockController.isLidClosed() != nil)
     }
+
+    /// Environment assertion: SACLockScreenImmediate is private API, so this
+    /// test is the tripwire for the day an OS update removes it. lockScreen()
+    /// itself is untestable — it would lock the screen running the tests.
+    @Test func lockSymbolIsAvailableOnThisMachine() {
+        #expect(LidLockController.isLockAvailable())
+    }
 }
