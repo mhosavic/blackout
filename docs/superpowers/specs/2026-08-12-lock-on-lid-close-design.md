@@ -213,14 +213,15 @@ Manual checklist:
 
 1. With `--setup-lid` already done and blackout on, close the lid → screen
    locks, `pmset -g | grep SleepDisabled` still reads `1`, a long-running
-   process keeps running. **This is the one unproven assumption in this design:
-   that the clamshell message still fires while sleep is disabled.** Everything
-   else here was verified before implementation.
+   process keeps running. This was the design's one unproven assumption — that
+   the clamshell message still fires while sleep is disabled. **Verified on
+   2026-08-12, macOS 26.6.1: it does.** The polling fallback was never needed.
 2. Open the lid → **the lock screen is readable**, not black. This is the
    decision-5 check; if it fails, the brightness restore is not landing.
 3. Unlock → blackout ends: brightness and volume restored, notification shown,
    `pmset -g | grep SleepDisabled` reads `0`, and the watcher is gone
-   (`pgrep -f "blackout --lid-watch"` is empty).
+   (`pgrep -f "blackout --lid-watch"` is empty). **Verified 2026-08-12**, with
+   the daemon log confirming no hotkey press ended the session.
 4. Open the lid and close it again *without* unlocking → the session survives and
    re-locks; `SleepDisabled` still reads `1`.
 5. External display connected and left on at enable → no watcher spawned,
