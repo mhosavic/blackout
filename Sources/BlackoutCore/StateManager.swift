@@ -7,6 +7,7 @@ public struct BlackoutState: Codable {
     public let caffeinatePID: Int32
     // Optional so state files written by older versions still decode
     public let sleepDisabled: Bool?
+    public let lidWatcherPID: Int32?
     public let activatedAt: Date
 }
 
@@ -40,13 +41,14 @@ public struct StateManager {
 
     /// Save the current state to disk. Returns false on failure so the caller
     /// can undo — a session without saved state could never be restored.
-    public static func saveState(brightness: Double, volume: Int?, externalLuminance: Int?, pid: pid_t, sleepDisabled: Bool) -> Bool {
+    public static func saveState(brightness: Double, volume: Int?, externalLuminance: Int?, pid: pid_t, sleepDisabled: Bool, lidWatcherPID: pid_t?) -> Bool {
         let state = BlackoutState(
             originalBrightness: brightness,
             originalVolume: volume,
             externalLuminance: externalLuminance,
             caffeinatePID: pid,
             sleepDisabled: sleepDisabled,
+            lidWatcherPID: lidWatcherPID,
             activatedAt: Date()
         )
 

@@ -24,7 +24,7 @@ final class StateManagerTests {
     }
 
     @Test func saveAndLoadRoundTrip() {
-        let saved = StateManager.saveState(brightness: 0.42, volume: 37, externalLuminance: 80, pid: 12345, sleepDisabled: true)
+        let saved = StateManager.saveState(brightness: 0.42, volume: 37, externalLuminance: 80, pid: 12345, sleepDisabled: true, lidWatcherPID: 54321)
         #expect(saved)
 
         let state = StateManager.loadState()
@@ -33,10 +33,11 @@ final class StateManagerTests {
         #expect(state?.externalLuminance == 80)
         #expect(state?.caffeinatePID == 12345)
         #expect(state?.sleepDisabled == true)
+        #expect(state?.lidWatcherPID == 54321)
     }
 
     @Test func saveWithSkippedFeaturesStoresNils() {
-        let saved = StateManager.saveState(brightness: 1.0, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false)
+        let saved = StateManager.saveState(brightness: 1.0, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false, lidWatcherPID: nil)
         #expect(saved)
 
         let state = StateManager.loadState()
@@ -44,6 +45,7 @@ final class StateManagerTests {
         #expect(state?.originalVolume == nil)
         #expect(state?.externalLuminance == nil)
         #expect(state?.sleepDisabled == false)
+        #expect(state?.lidWatcherPID == nil)
     }
 
     /// State files written before the lid-sleep feature have no sleepDisabled
@@ -64,6 +66,7 @@ final class StateManagerTests {
         #expect(state?.caffeinatePID == 999)
         #expect(state?.sleepDisabled == nil)
         #expect(state?.externalLuminance == nil)
+        #expect(state?.lidWatcherPID == nil)
     }
 
     @Test func corruptStateFileLoadsAsNilButStillCounts() throws {
@@ -77,7 +80,7 @@ final class StateManagerTests {
 
     @Test func hasStateReflectsFileExistence() {
         #expect(!StateManager.hasState())
-        _ = StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false)
+        _ = StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false, lidWatcherPID: nil)
         #expect(StateManager.hasState())
         StateManager.clearState()
         #expect(!StateManager.hasState())
@@ -93,7 +96,7 @@ final class StateManagerTests {
         StateManager.stateFileURL = tempDir
             .appendingPathComponent("missing-dir")
             .appendingPathComponent("state.json")
-        let saved = StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false)
+        let saved = StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false, lidWatcherPID: nil)
         #expect(!saved)
     }
 }
