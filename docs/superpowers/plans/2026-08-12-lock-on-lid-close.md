@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** While blackout is active, closing the MacBook lid locks the screen immediately, without sleeping the machine or stopping any running work.
+**Goal:** While blackout is active, closing the MacBook lid locks the screen immediately without sleeping the machine; opening it shows a readable lock screen; unlocking ends the blackout session.
 
-**Architecture:** A new `LidLockController` in `BlackoutCore` owns both halves: reading the lid state from `IOPMrootDomain` via IOKit, and calling `SACLockScreenImmediate()` resolved at runtime from `login.framework`. `enable()` spawns a detached `blackout --lid-watch` process that parks on a CFRunLoop waiting for clamshell notifications; its PID is recorded in the state file next to `caffeinatePID` and SIGTERM'd by `disable()`.
+**Architecture:** A new `LidLockController` in `BlackoutCore` owns the mechanisms: reading the lid state from `IOPMrootDomain` via IOKit, observing `com.apple.screenIsUnlocked`, and calling `SACLockScreenImmediate()` resolved at runtime from `login.framework`. `enable()` spawns a detached `blackout --lid-watch` process that parks on a CFRunLoop; its PID is recorded in the state file next to `caffeinatePID` and SIGTERM'd by `disable()`. Policy lives in `main.swift`, where the watcher's three handlers can reach `disable()` and the brightness controllers directly.
 
-**Tech Stack:** Swift 6 toolchain in language mode 5, SwiftPM, IOKit (public API), `dlopen`/`dlsym` against `login.framework` (private but long-stable), swift-testing.
+**Tech Stack:** Swift 6 toolchain in language mode 5, SwiftPM, IOKit (public API), `dlopen`/`dlsym` against `login.framework` (private but long-stable), `DistributedNotificationCenter`, swift-testing.
 
 Full design rationale, including the alternatives that were tested and rejected: `docs/superpowers/specs/2026-08-12-lock-on-lid-close-design.md`.
 
@@ -18,14 +18,15 @@ Full design rationale, including the alternatives that were tested and rejected:
 - All targets use `.swiftLanguageMode(.v5)`.
 - Commit messages: imperative mood, one line, under 72 chars, explaining *why* rather than *what*. No `feat:`/`fix:` prefixes — the repo does not use them.
 - Match the surrounding comment style: comments explain *why* a non-obvious choice was made, and are omitted where the code is self-evident.
+- The watcher's stdio is `/dev/null` and must stay that way, so **anything the user must know about has to go through `NotificationManager`, not `print`.**
 - Never call `LidLockController.startWatcher()` from a test. It spawns `Bundle.main.executablePath`, which inside the test binary is `blackout-tests` — the suite would fork itself.
 - Never call `LidLockController.lockScreen()` from a test. It really does lock the screen.
 
 ---
 
-### Task 1: Lid state and the open→closed edge
+### Task 1: Lid state and transitions
 
-The pure, testable half of the watcher: read the clamshell state, and decide when a change is worth locking for. `IOPMrootDomain` posts its clamshell message for `AppleClamshellCausesSleep` changes too, so repeats must not re-lock.
+The pure, testable core: read the clamshell state, and classify a change. `IOPMrootDomain` posts its clamshell message for `AppleClamshellCausesSleep` changes too, so an unchanged state is not an event.
 
 **Files:**
 - Create: `Sources/BlackoutCore/LidLockController.swift`
@@ -33,7 +34,7 @@ The pure, testable half of the watcher: read the clamshell state, and decide whe
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `LidLockController.isLidClosed() -> Bool?` (nil when the property is absent, e.g. a desktop Mac), `LidLockController.shouldLock(previous: Bool?, current: Bool) -> Bool`, `LidLockController.clamshellStateChanged: UInt32` (internal to the module).
+- Produces: `LidLockController.LidTransition` (`.closed` / `.opened` / `.none`), `LidLockController.isLidClosed() -> Bool?` (nil when the property is absent, e.g. a desktop Mac), `LidLockController.transition(previous: Bool?, current: Bool) -> LidTransition`, `LidLockController.clamshellStateChanged: UInt32` (module-internal).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -46,32 +47,29 @@ import BlackoutCore
 
 struct LidLockControllerTests {
 
-    // MARK: - Lock edge
+    // MARK: - Transitions
 
-    @Test func locksOnTheOpenToClosedEdge() {
-        #expect(LidLockController.shouldLock(previous: false, current: true))
+    @Test func closingTheLidIsAClosedTransition() {
+        #expect(LidLockController.transition(previous: false, current: true) == .closed)
+    }
+
+    @Test func openingTheLidIsAnOpenedTransition() {
+        #expect(LidLockController.transition(previous: true, current: false) == .opened)
     }
 
     /// IOPMrootDomain posts the same message when AppleClamshellCausesSleep
-    /// changes, so a repeat of the closed state must not lock again
-    @Test func doesNotLockOnRepeatedClosedState() {
-        #expect(!LidLockController.shouldLock(previous: true, current: true))
-    }
-
-    @Test func doesNotLockOnOpening() {
-        #expect(!LidLockController.shouldLock(previous: true, current: false))
-    }
-
-    @Test func doesNotLockWhileStayingOpen() {
-        #expect(!LidLockController.shouldLock(previous: false, current: false))
+    /// changes, so an unchanged lid must not read as an event
+    @Test func unchangedStateIsNotATransition() {
+        #expect(LidLockController.transition(previous: true, current: true) == LidLockController.LidTransition.none)
+        #expect(LidLockController.transition(previous: false, current: false) == LidLockController.LidTransition.none)
     }
 
     /// The watcher seeds its previous state at startup. Whatever the lid is
-    /// doing then, the first observation only establishes a baseline —
-    /// enabling blackout with the lid already shut must not lock instantly.
-    @Test func doesNotLockOnTheFirstObservation() {
-        #expect(!LidLockController.shouldLock(previous: nil, current: true))
-        #expect(!LidLockController.shouldLock(previous: nil, current: false))
+    /// doing then, the first observation is only a baseline — enabling blackout
+    /// with the lid already shut must not lock instantly.
+    @Test func firstObservationIsOnlyABaseline() {
+        #expect(LidLockController.transition(previous: nil, current: true) == LidLockController.LidTransition.none)
+        #expect(LidLockController.transition(previous: nil, current: false) == LidLockController.LidTransition.none)
     }
 
     // MARK: - Environment
@@ -84,6 +82,8 @@ struct LidLockControllerTests {
     }
 }
 ```
+
+Note the `LidLockController.LidTransition.none` spelling in the `.none` comparisons: a bare `.none` would be inferred as `Optional.none` and compare wrongly.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -99,6 +99,13 @@ import Foundation
 import IOKit
 
 public struct LidLockController {
+
+    /// What the lid did between two observations
+    public enum LidTransition {
+        case closed
+        case opened
+        case none
+    }
 
     /// Message IOPMrootDomain posts when the lid opens or closes. Swift cannot
     /// import kIOPMMessageClamshellStateChange because it is a function-like
@@ -120,12 +127,12 @@ public struct LidLockController {
         return property as? Bool
     }
 
-    /// Lock only on the open→closed edge. The clamshell message also fires when
-    /// AppleClamshellCausesSleep changes, so an unchanged state must not lock
-    /// again, and the first observation (nil previous) is only a baseline.
-    public static func shouldLock(previous: Bool?, current: Bool) -> Bool {
-        guard let previous else { return false }
-        return current && !previous
+    /// Classify a lid observation. The clamshell message also fires when
+    /// AppleClamshellCausesSleep changes, so an unchanged state is no event,
+    /// and a nil previous is the watcher's first look — a baseline only.
+    public static func transition(previous: Bool?, current: Bool) -> LidTransition {
+        guard let previous, previous != current else { return .none }
+        return current ? .closed : .opened
     }
 }
 ```
@@ -133,7 +140,7 @@ public struct LidLockController {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `swift run blackout-tests --filter LidLockControllerTests`
-Expected: PASS, 6 tests.
+Expected: PASS, 5 tests.
 
 If the build fails to link IOKit, add `linkerSettings: [.linkedFramework("IOKit")]` to the `BlackoutCore` target in `Package.swift`. It is expected to autolink without this.
 
@@ -141,7 +148,7 @@ If the build fails to link IOKit, add `linkerSettings: [.linkedFramework("IOKit"
 
 ```bash
 git add Sources/BlackoutCore/LidLockController.swift Tests/BlackoutTests/LidLockControllerTests.swift
-git commit -m "Read lid state so blackout can react to a closing lid"
+git commit -m "Read lid state so blackout can react to the lid moving"
 ```
 
 ---
@@ -178,7 +185,7 @@ Expected: compile error — `type 'LidLockController' has no member 'isLockAvail
 
 - [ ] **Step 3: Write the implementation**
 
-Add to `LidLockController`, after `shouldLock`:
+Add to `LidLockController`, after `transition`:
 
 ```swift
     // MARK: - Locking
@@ -186,7 +193,7 @@ Add to `LidLockController`, after `shouldLock`:
     /// SACLockScreenImmediate is the same lock as ⌃⌘Q: immediate regardless of
     /// the "require password after…" grace period, Touch ID still unlocks, and
     /// every process keeps running. Private API, so it is resolved at runtime
-    /// and its absence degrades to a printed warning rather than a crash.
+    /// and its absence degrades to a reported warning rather than a crash.
     /// Resolved once — the handle is deliberately never closed, since the
     /// function pointer stays live for the life of the process.
     private static let lockFunction: (@convention(c) () -> Void)? = {
@@ -213,7 +220,7 @@ Add to `LidLockController`, after `shouldLock`:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `swift run blackout-tests --filter LidLockControllerTests`
-Expected: PASS, 7 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -224,17 +231,17 @@ git commit -m "Resolve the screen lock at runtime so a missing symbol degrades"
 
 ---
 
-### Task 3: The watcher — IOKit notification and process lifecycle
+### Task 3: The watcher — lid edges, unlock, and process lifecycle
 
-The long-lived half: subscribe to clamshell notifications, plus spawn/stop helpers for the detached watcher process.
+The long-lived half: subscribe to clamshell notifications and to `com.apple.screenIsUnlocked`, plus spawn/stop helpers for the detached watcher process. This task delivers mechanism only — what to *do* on each event is Task 5's job.
 
 **Files:**
 - Modify: `Sources/BlackoutCore/LidLockController.swift`
 - Test: `Tests/BlackoutTests/LidLockControllerTests.swift`
 
 **Interfaces:**
-- Consumes: `isLidClosed()`, `shouldLock(previous:current:)`, `clamshellStateChanged` from Task 1.
-- Produces: `LidLockController.watchForLidClose(onClose: @escaping () -> Void) -> Bool` (blocks forever on success, returns false if the notification could not be registered), `LidLockController.startWatcher() -> pid_t?`, `LidLockController.stopWatcher(pid: pid_t)`.
+- Consumes: `isLidClosed()`, `transition(previous:current:)`, `clamshellStateChanged` from Task 1.
+- Produces: `LidLockController.watch(onLidClose:onLidOpen:onUnlock:) -> Bool` (blocks forever on success, returns false if the IOKit notification could not be registered), `LidLockController.startWatcher() -> pid_t?`, `LidLockController.stopWatcher(pid: pid_t)`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -272,7 +279,7 @@ Add to `LidLockController`, after `lockScreen()`:
 ```swift
     // MARK: - Watcher process
 
-    /// Spawn the detached watcher that locks the screen when the lid closes.
+    /// Spawn the detached watcher that reacts to the lid and the unlock.
     /// stdio goes to /dev/null: the hotkey daemon reads blackout's stdout to
     /// EOF, so a surviving child holding that pipe would deadlock it for the
     /// whole session — the same trap already fixed for caffeinate.
@@ -299,12 +306,16 @@ Add to `LidLockController`, after `lockScreen()`:
         kill(pid, SIGTERM)
     }
 
-    /// Watch the lid and call `onClose` on every open→closed edge. Blocks on
+    /// Watch the lid and the lock screen, calling back on each event. Blocks on
     /// the current run loop and does not return while watching; returns false
     /// if the notification could not be registered.
     @discardableResult
-    public static func watchForLidClose(onClose: @escaping () -> Void) -> Bool {
-        let watcher = LidWatcher(onClose: onClose)
+    public static func watch(
+        onLidClose: @escaping () -> Void,
+        onLidOpen: @escaping () -> Void,
+        onUnlock: @escaping () -> Void
+    ) -> Bool {
+        let watcher = LidWatcher(onLidClose: onLidClose, onLidOpen: onLidOpen, onUnlock: onUnlock)
         guard watcher.start() else { return false }
 
         withExtendedLifetime(watcher) {
@@ -319,18 +330,36 @@ Add to `LidLockController`, after `lockScreen()`:
 /// between callbacks.
 private final class LidWatcher {
 
-    private let onClose: () -> Void
+    private let onLidClose: () -> Void
+    private let onLidOpen: () -> Void
+    private let onUnlock: () -> Void
     private var previous: Bool?
     private var notification: io_object_t = 0
 
-    init(onClose: @escaping () -> Void) {
-        self.onClose = onClose
+    init(
+        onLidClose: @escaping () -> Void,
+        onLidOpen: @escaping () -> Void,
+        onUnlock: @escaping () -> Void
+    ) {
+        self.onLidClose = onLidClose
+        self.onLidOpen = onLidOpen
+        self.onUnlock = onUnlock
         // Seed from the current state so enabling blackout with the lid
         // already shut does not lock immediately
         self.previous = LidLockController.isLidClosed()
     }
 
     func start() -> Bool {
+        // Unlocking is what ends a session, so it is watched separately from
+        // the lid: anyone can lift a lid, only the owner can authenticate
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.onUnlock()
+        }
+
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
         guard service != 0 else { return false }
         defer { IOObjectRelease(service) }
@@ -364,27 +393,30 @@ private final class LidWatcher {
         guard messageType == LidLockController.clamshellStateChanged,
               let current = LidLockController.isLidClosed() else { return }
 
-        let locking = LidLockController.shouldLock(previous: previous, current: current)
+        let transition = LidLockController.transition(previous: previous, current: current)
         previous = current
-        if locking {
-            onClose()
+
+        switch transition {
+        case .closed: onLidClose()
+        case .opened: onLidOpen()
+        case .none: break
         }
     }
 }
 ```
 
-Note the closing brace: `watchForLidClose` is the last member of `LidLockController`, and `LidWatcher` is a file-private type declared after it.
+Note the closing brace: `watch` is the last member of `LidLockController`, and `LidWatcher` is a file-private type declared after it.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `swift run blackout-tests --filter LidLockControllerTests`
-Expected: PASS, 8 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add Sources/BlackoutCore/LidLockController.swift Tests/BlackoutTests/LidLockControllerTests.swift
-git commit -m "Watch the clamshell so the lid can drive the screen lock"
+git commit -m "Watch the lid and the unlock so the session can respond to both"
 ```
 
 ---
@@ -431,11 +463,7 @@ In `Sources/BlackoutCore/StateManager.swift`, add the field to `BlackoutState` a
     public let lidWatcherPID: Int32?
 ```
 
-Extend the existing comment above `sleepDisabled` so it covers both optional fields:
-
-```swift
-    // Optional so state files written by older versions still decode
-```
+The existing comment above `sleepDisabled` ("Optional so state files written by older versions still decode") now covers both fields; leave it where it is.
 
 Then add the parameter to `saveState` and thread it into the initializer:
 
@@ -457,7 +485,7 @@ The rest of `saveState` is unchanged. Member order in the initializer must match
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `swift run blackout-tests`
-Expected: PASS, 23 tests in 3 suites. (`Sources/blackout/main.swift` does not compile yet — it still calls the old `saveState` signature. `swift run blackout-tests` only builds `BlackoutCore` and the test target, so this task is verifiable on its own; Task 5 fixes the CLI.)
+Expected: PASS, 22 tests in 3 suites. (`Sources/blackout/main.swift` does not compile yet — it still calls the old `saveState` signature. `swift run blackout-tests` only builds `BlackoutCore` and the test target, so this task is verifiable on its own; Task 5 fixes the CLI.)
 
 - [ ] **Step 5: Commit**
 
@@ -468,18 +496,35 @@ git commit -m "Track the lid watcher in state so disable can stop it"
 
 ---
 
-### Task 5: Wire the CLI
+### Task 5: Wire the CLI and the watcher's policy
 
-Add the flag, the internal watcher mode, and the enable/disable/rollback wiring.
+The flag, the internal watcher mode with its three handlers, and the two places `disable()` has to change.
 
 **Files:**
+- Modify: `Sources/BlackoutCore/NotificationManager.swift`
 - Modify: `Sources/blackout/main.swift`
 
 **Interfaces:**
 - Consumes: everything produced by Tasks 1–4.
-- Produces: the `--no-lock` / `-k` flag and the internal `--lid-watch` mode.
+- Produces: the `--no-lock` / `-k` flag, the internal `--lid-watch` mode, `NotificationManager.showSleepRestoreFailed()`, and `restoreDisplays(state:)` in `main.swift`.
 
-- [ ] **Step 1: Add the flag and the watcher mode**
+- [ ] **Step 1: Add the failure notification**
+
+In `Sources/BlackoutCore/NotificationManager.swift`, add after `showDisabled()`:
+
+```swift
+    /// Shown when re-enabling sleep failed. The watcher's stdout goes to
+    /// /dev/null, so on the auto-disable path this notification is the only way
+    /// the user ever learns their Mac will not sleep.
+    public static func showSleepRestoreFailed() {
+        showNotification(
+            title: "Blackout",
+            message: "Could not re-enable sleep. Run: sudo pmset -a disablesleep 0"
+        )
+    }
+```
+
+- [ ] **Step 2: Add the flag and the watcher mode**
 
 In `Sources/blackout/main.swift`, add after the `noLidFlag` line (line 11):
 
@@ -487,26 +532,59 @@ In `Sources/blackout/main.swift`, add after the `noLidFlag` line (line 11):
 let noLockFlag = args.contains("--no-lock") || args.contains("-k")
 ```
 
-Then add the internal mode immediately after it, above the `--setup-lid` block. It must come before any state handling, since the watcher is not a toggle:
+Then add the internal mode immediately after it, above the `--setup-lid` block. It must come before any state handling, since the watcher is not a toggle. `restoreDisplays` and `disable` are defined later in the file, which is fine — top-level functions are visible throughout:
 
 ```swift
 // Internal mode: the detached watcher spawned by enable(). Not in --help —
 // users never run it directly, but it is visible in `ps` as `blackout --lid-watch`.
+// Each handler reloads state: if the session ended without this process being
+// killed, there is nothing left to act on.
 if args.contains("--lid-watch") {
-    let watching = LidLockController.watchForLidClose {
-        // The session ended without this process being killed (crash, or a
-        // state file removed by hand) — stop rather than lock a machine
-        // whose blackout is long gone
-        guard StateManager.hasState() else { exit(0) }
-        LidLockController.lockScreen()
-    }
+    let watching = LidLockController.watch(
+        onLidClose: {
+            guard let state = StateManager.loadState() else { exit(0) }
+            // Undo the dim before locking. The panel may already be powering
+            // down, so this is best-effort; the open handler is the one that
+            // has to land.
+            restoreDisplays(state: state)
+            LidLockController.lockScreen()
+        },
+        onLidOpen: {
+            guard let state = StateManager.loadState() else { exit(0) }
+            // Without this the lock screen is a black rectangle and the
+            // password field cannot be seen
+            restoreDisplays(state: state)
+        },
+        onUnlock: {
+            guard let state = StateManager.loadState() else { exit(0) }
+            // Authenticating means the owner is back: end the session so the
+            // restored brightness keeps telling the truth about blackout
+            disable(state: state)
+            exit(0)
+        }
+    )
     exit(watching ? 0 : 1)
 }
 ```
 
-`watchForLidClose` does not return while it is watching, so `exit(0)` there is unreachable in practice; it exists so the failure path exits nonzero.
+`watch` does not return while it is watching, so `exit(0)` there is unreachable in practice; it exists so the failure path exits nonzero.
 
-- [ ] **Step 2: Add `-k` to the help text**
+- [ ] **Step 3: Add the display restore helper**
+
+Add above `func enable(...)` in `main.swift`:
+
+```swift
+/// Bring the panels back to what the user had. Idempotent — disable() sets the
+/// same values again — so the watcher can call it on every lid event.
+func restoreDisplays(state: BlackoutState) {
+    BrightnessController.setBrightness(state.originalBrightness)
+    if let extLum = state.externalLuminance {
+        ExternalDisplayController.setLuminance(extLum)
+    }
+}
+```
+
+- [ ] **Step 4: Add `-k` to the help text**
 
 In the options block, after the `--no-lid` line (line 44):
 
@@ -514,17 +592,18 @@ In the options block, after the `--no-lid` line (line 44):
     print("  -k, --no-lock      Skip locking the screen when the lid closes")
 ```
 
-And extend the description paragraph — replace the line reading `print("after --setup-lid). Audio is automatically kept unmuted when an external")` and the line after it with:
+Then replace the two description lines starting `print("after --setup-lid). Audio is automatically kept unmuted when an external")` with:
 
 ```swift
-    print("after --setup-lid) and locks the screen when the lid closes. Audio is")
-    print("automatically kept unmuted when an external monitor is detected, which")
-    print("also leaves the lid lock off. Run again to restore original settings.")
+    print("after --setup-lid) and locks the screen when the lid closes — unlocking")
+    print("then ends blackout. Audio is automatically kept unmuted when an external")
+    print("monitor is detected, which also leaves the lid lock off. Run again to")
+    print("restore original settings.")
 ```
 
 Delete the now-duplicated `print("monitor is detected. Run again to restore original settings.")` line.
 
-- [ ] **Step 3: Update the `enable()` signature and decide the lock**
+- [ ] **Step 5: Update the `enable()` signature and decide the lock**
 
 Change the signature (line 65) to:
 
@@ -548,7 +627,7 @@ Then, after the lid-sleep block (after line 94) and before `saveState`, spawn th
     let lidWatcherPID = lockOnLid ? LidLockController.startWatcher() : nil
 ```
 
-- [ ] **Step 4: Thread the PID through save and rollback**
+- [ ] **Step 6: Thread the PID through save and rollback**
 
 Update the `saveState` call (line 98) to pass `lidWatcherPID: lidWatcherPID`, and add the watcher to the rollback inside that `guard`, after `SleepController.allowSleep(pid: pid)`:
 
@@ -558,13 +637,13 @@ Update the `saveState` call (line 98) to pass `lidWatcherPID: lidWatcherPID`, an
         }
 ```
 
-- [ ] **Step 5: Report the lock in the status block**
+- [ ] **Step 7: Report the lock in the status block**
 
 After the lid-sleep status lines (after line 141), add:
 
 ```swift
     if lidWatcherPID != nil {
-        print("  Lock on lid close: armed")
+        print("  Lock on lid close: armed (unlocking ends blackout)")
     } else if noLock {
         print("  Lock on lid close: skipped (--no-lock)")
     } else if externalLeftOn {
@@ -576,18 +655,28 @@ After the lid-sleep status lines (after line 141), add:
     }
 ```
 
-- [ ] **Step 6: Stop the watcher in `disable()`**
+- [ ] **Step 8: Stop the watcher in `disable()`, and notify on a failed sleep restore**
 
 In `disable(state:)`, after the caffeinate block (after line 152):
 
 ```swift
-    // Stop the lid watcher; a dead or missing PID just means it already exited
-    if let watcherPID = state.lidWatcherPID, SleepController.isProcessRunning(pid: watcherPID) {
+    // Stop the lid watcher. Skip our own PID: on the unlock path this function
+    // runs inside the watcher, and SIGTERMing ourselves here would abandon the
+    // restore half-done. A dead or missing PID just means it already exited.
+    if let watcherPID = state.lidWatcherPID,
+       watcherPID != ProcessInfo.processInfo.processIdentifier,
+       SleepController.isProcessRunning(pid: watcherPID) {
         LidLockController.stopWatcher(pid: watcherPID)
     }
 ```
 
-- [ ] **Step 7: Pass the flag at the call site**
+Then, in the warning branch at the end of `disable()`, add the notification after the two `print` lines:
+
+```swift
+        NotificationManager.showSleepRestoreFailed()
+```
+
+- [ ] **Step 9: Pass the flag at the call site**
 
 Update the final `enable(...)` call (line 203):
 
@@ -595,27 +684,42 @@ Update the final `enable(...)` call (line 203):
     enable(dimExternal: dimExternalFlag, noMute: noMuteFlag, noLid: noLidFlag, noLock: noLockFlag)
 ```
 
-- [ ] **Step 8: Build and run the full suite**
+- [ ] **Step 10: Build and run the full suite**
 
 Run: `swift build && swift run blackout-tests`
-Expected: build succeeds, 23 tests pass.
+Expected: build succeeds, 22 tests pass.
 
-- [ ] **Step 9: Verify by hand**
+- [ ] **Step 11: Verify by hand**
 
 These cover what no unit test can. Run from a real Terminal window on the laptop:
 
 ```bash
 swift build -c release
-.build/release/blackout            # expect "Lock on lid close: armed"
+.build/release/blackout            # expect "armed (unlocking ends blackout)"
 pgrep -fl "blackout --lid-watch"   # expect one process
 ```
 
-Close the lid, wait ~5 seconds, open it. Expected: the lock screen, Touch ID unlocks, blackout still on and the screen still dim. Then:
+Close the lid, wait ~5 seconds, open it. Expected, in order:
+
+1. The lock screen is **readable**, not black — this is the whole point of the brightness restore.
+2. Unlock. Brightness and volume are restored, the "Brightness restored." notification appears, and:
 
 ```bash
-pmset -g | grep SleepDisabled      # expect 1 — the machine never slept
-.build/release/blackout            # toggle off
+pmset -g | grep SleepDisabled      # expect 0 — the session ended
 pgrep -fl "blackout --lid-watch"   # expect no output
+ls ~/.blackout.state               # expect "No such file"
+```
+
+Then the survival case — the session must outlive a lid open that is *not* authenticated:
+
+```bash
+.build/release/blackout
+```
+
+Close the lid, open it, and **do not unlock**. Close it again. Open it and check from another machine over SSH, or after unlocking:
+
+```bash
+pmset -g | grep SleepDisabled      # expect 1 while it was locked
 ```
 
 Then the skip paths:
@@ -629,13 +733,15 @@ With an external monitor connected, `blackout` should print `skipped (external m
 
 Finally the daemon path, which is where a stdio mistake would show up: with the daemon installed, press ⌃⌥⌘\ twice. Both toggles must complete and `~/.blackout/daemon.log` must show no hang.
 
-**If closing the lid does not lock:** the one assumption this design could not verify up front is that `kIOPMMessageClamshellStateChange` still fires while `SleepDisabled` is 1. Diagnose by running `.build/release/blackout --lid-watch` in a Terminal with a temporary `print` in the `handle(messageType:)` callback — if no message arrives on lid close, fall back to polling `isLidClosed()` on a 2-second timer inside `LidWatcher`, which uses the same `shouldLock` logic and needs no other change.
+**If closing the lid does not lock:** the one assumption this design could not verify up front is that `kIOPMMessageClamshellStateChange` still fires while `SleepDisabled` is 1. Diagnose by running `.build/release/blackout --lid-watch` in a Terminal with a temporary `print` in `handle(messageType:)` — if no message arrives on lid close, fall back to polling `isLidClosed()` on a 2-second timer inside `LidWatcher`, which feeds the same `transition` logic and needs no other change.
 
-- [ ] **Step 10: Commit**
+**If unlocking does not end the session:** confirm the notification name with a temporary observer for `com.apple.screenIsUnlocked` printing to a file. If the name has changed, `com.apple.sessionDidBecomeActive` is the fallback.
+
+- [ ] **Step 12: Commit**
 
 ```bash
-git add Sources/blackout/main.swift
-git commit -m "Lock the screen on lid close while blackout is active"
+git add Sources/BlackoutCore/NotificationManager.swift Sources/blackout/main.swift
+git commit -m "Lock on lid close and end blackout when the owner unlocks"
 ```
 
 ---
@@ -682,15 +788,14 @@ Add a row after the `--no-lid` row (`README.md:85`):
 
 - [ ] **Step 4: Document the behavior**
 
-In "What happens when enabled" (`README.md:99-105`), insert between the current
-item 6 (lid-close sleep) and item 7 (notification), so the notification becomes
-item 8:
+In "What happens when enabled" (`README.md:99-105`), insert between the current item 6 (lid-close sleep) and item 7 (notification), so the notification becomes item 8:
 
 ```markdown
 7. Closing the lid locks the screen immediately — the Mac keeps running, but
-   nobody can open the lid into your session. Skipped when an external monitor
-   is left on, so docked clamshell use is unaffected. The lock ignores your
-   "require password after…" delay.
+   nobody can open the lid into your session. Opening the lid restores
+   brightness so the lock screen is readable, and unlocking ends blackout
+   entirely. Skipped when an external monitor is left on, so docked clamshell
+   use is unaffected.
 ```
 
 In "What happens when disabled" (`README.md:107-113`), extend item 4 to:
@@ -701,14 +806,21 @@ In "What happens when disabled" (`README.md:107-113`), extend item 4 to:
 
 - [ ] **Step 5: Add troubleshooting entries**
 
-At the end of the Troubleshooting section, matching its existing `###` heading
-style:
+At the end of the Troubleshooting section, matching its existing `###` heading style:
 
 ```markdown
 ### A second `blackout` process is running
 
 That is the lid watcher (`blackout --lid-watch`). It exists only while blackout
-is active and exits when you toggle blackout off. Disable it with `--no-lock`.
+is active and exits when you toggle blackout off — or when you unlock after a
+lid close, which ends the session. Disable it with `--no-lock`.
+
+### The lock screen is black after opening the lid
+
+Blackout sets brightness to 0%, and it restores it when the lid opens. If that
+did not happen, press the brightness-up key — it works at the lock screen — and
+report it: the restore is the part of this feature most likely to be defeated
+by a macOS change.
 
 ### Closing the lid does not lock the screen
 
@@ -732,8 +844,8 @@ git commit -m "Document the lid lock and clean up its watcher on uninstall"
 After Task 6, the whole feature is verifiable with:
 
 ```bash
-swift build && swift run blackout-tests    # 23 tests, 3 suites
+swift build && swift run blackout-tests    # 22 tests, 3 suites
 bash -n uninstall.sh
 ```
 
-plus the manual checklist in Task 5, Step 9 — the IOKit callback and the lock call itself cannot be covered by the suite.
+plus the manual checklist in Task 5, Step 11 — the IOKit callback, the unlock observer, and the lock call itself cannot be covered by the suite.

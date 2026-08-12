@@ -51,6 +51,11 @@ immediate (ignores the 300s grace), Touch ID and Watch unlock still work, and
 every process keeps running. Private but long-stable; treated as best-effort, so
 its absence degrades to a printed "unavailable" rather than a crash.
 
+**Notice the unlock** — the `com.apple.screenIsUnlocked` distributed
+notification, observed through `DistributedNotificationCenter` on the run loop
+the watcher is already running. This is what ends the session (decision 6);
+lid-open alone must not, since anyone can lift a lid.
+
 ## Decisions (approved 2026-08-12)
 
 1. **On by default** when blackout activates, opt out with `--no-lock` / `-k`
@@ -73,6 +78,23 @@ its absence degrades to a printed "unavailable" rather than a crash.
    daemon is installed, dies with the session, and reuses the lifecycle pattern
    already proven for caffeinate. Hosting an IOKit source on the daemon's
    existing run loop was rejected: it does nothing for CLI-only use.
+5. **Brightness is restored on both lid edges.** `dimScreen()` sets the backlight
+   to its floor, and that value persists across a lid cycle — so without this,
+   opening the lid means entering a password into a black screen. The open edge
+   is the authoritative restore (the panel is powering up, so the write sticks);
+   the close edge attempts it too, one call, in case the open notification is
+   late. With `-e`, the external display's luminance is restored the same way,
+   or the lock screen lands on a monitor dimmed to 0.
+6. **Unlocking ends the blackout session.** Brightness is the state indicator —
+   0% means on, normal means off — and the lid-open restore has already brightened
+   the screen, so leaving blackout active would make that indicator lie. Ending it
+   keeps the mapping exact and costs one hotkey to undo. The alternative (stay on,
+   dim ends, notification explains) was rejected for exactly that ambiguity.
+7. **The watcher reports through notifications, never stdout.** Its stdio is
+   `/dev/null` by necessity (decision 4), so `disable()`'s printed warnings would
+   vanish. The auto-disable path posts one notification confirming blackout ended,
+   and a distinct one carrying `sudo pmset -a disablesleep 0` if the sleep restore
+   failed — otherwise the one case the user must know about is the silent one.
 
 ## Behavior
 
@@ -98,15 +120,28 @@ its absence degrades to a printed "unavailable" rather than a crash.
 **`blackout --lid-watch`** — internal mode, handled early alongside
 `--setup-lid`, not listed in `--help`.
 
-- Registers the IOKit notification, runs a CFRunLoop, writes nothing to stdout.
+- Registers the IOKit notification and the unlock observer, runs a CFRunLoop,
+  writes nothing to stdout.
 - Seeds the previous state from the current clamshell reading at startup, so
   enabling blackout with the lid already shut does not lock immediately.
-- On an open→closed edge: if `StateManager.hasState()` is false the session is
-  gone — exit instead of locking. Otherwise call `SACLockScreenImmediate()`.
-- Locking again on a later close is intentional; locking an already-locked
-  screen is a no-op.
+- Every edge first loads the state file. If it is gone the session ended without
+  the watcher being killed (a crash, or a hand-deleted file) — exit rather than
+  act on a machine whose blackout is over.
+- **Closed edge:** restore `originalBrightness` (and `externalLuminance` if
+  `-e` dimmed it), then call `SACLockScreenImmediate()`. Locking again on a later
+  close is intentional; locking an already-locked screen is a no-op.
+- **Open edge:** restore the same values. This is the restore that matters — it
+  is what makes the lock screen readable.
+- **Unlock:** run the full `disable()` path, post the confirming notification,
+  and exit. Only unlocking does this; an unauthenticated lid-open must not end
+  the session.
 - No signal handler and no files owned, so the default SIGTERM disposition is
   already the clean exit.
+
+The screen saver can also lock the screen without any lid movement, and
+unlocking from that ends the session too. That is consistent with decision 6 —
+the screen is bright again, so blackout must be off — and `caffeinate -d` makes
+it rare in practice.
 
 **`disable()`**
 
@@ -114,9 +149,14 @@ its absence degrades to a printed "unavailable" rather than a crash.
   PID is ignored, exactly as the caffeinate path already does; the same PID-reuse
   caveat applies and is accepted for the same reason — spawn and kill happen
   inside one session.
+- **Skip that kill when the PID is our own.** On the unlock path `disable()` runs
+  *inside* the watcher, and SIGTERMing itself mid-function would leave brightness
+  and volume unrestored. Calling `disable()` directly, rather than spawning
+  `blackout`, is deliberate: bare `blackout` is a toggle, so if the state file had
+  already vanished it would *enable* blackout instead of ending it.
 
-Opening the lid does nothing on its own: blackout stays on, the screen stays
-dim, the user unlocks normally.
+Opening the lid does not by itself end the session — it only brightens the
+screen so the lock screen can be read. Authentication is what ends it.
 
 **State** — new optional `lidWatcherPID: Int32?` on `BlackoutState`. Optional so
 pre-upgrade state files still decode, following the `sleepDisabled` precedent.
@@ -131,11 +171,15 @@ liveness reporting in `--status`.
 
 - `Sources/BlackoutCore/LidLockController.swift` (new) — `isLockAvailable()`,
   `lockScreen()`, `isLidClosed() -> Bool?`, `shouldLock(previous:current:)`
-  (pure, testable), `watchForLidClose()` (notification + run loop).
+  (pure, testable), `startWatcher()`, `stopWatcher(pid:)`, and the watch entry
+  point taking an `onLidClose` / `onLidOpen` / `onUnlock` trio.
 - `Sources/BlackoutCore/StateManager.swift` — `lidWatcherPID` field and
   `saveState` parameter.
-- `Sources/blackout/main.swift` — `--no-lock` flag, `--lid-watch` branch,
-  spawn/kill wiring, rollback, help text.
+- `Sources/BlackoutCore/NotificationManager.swift` — a notification for the
+  auto-disable, and one for a failed sleep restore carrying the manual command.
+- `Sources/blackout/main.swift` — `--no-lock` flag, `--lid-watch` branch with the
+  three handlers, spawn/kill wiring, the self-kill guard in `disable()`,
+  rollback, help text.
 - `uninstall.sh` — kill a stray `lidWatcherPID` read from the state file,
   mirroring the existing caffeinate fallback.
 - `README.md` — flag row, "what happens when enabled" step, and troubleshooting
@@ -148,7 +192,8 @@ liveness reporting in `--status`.
 
 ## Testing
 
-Automated (`swift test`; the swift-testing target already exists):
+Automated (`swift run blackout-tests` — the suite is an executable target, so
+`swift test` finds nothing):
 
 - `shouldLock` edge table — open→closed locks; closed→open, closed→closed and
   open→open do not. The no-op cases are the point, since the message also fires
@@ -159,7 +204,8 @@ Automated (`swift test`; the swift-testing target already exists):
 - `isLockAvailable()` is true on the build machine — an environment assertion
   that fails loudly the day an OS update drops the symbol.
 
-The IOKit callback and the lock call itself are not automatable.
+The IOKit callback, the unlock observer, and the lock call itself are not
+automatable.
 
 Manual checklist:
 
@@ -168,11 +214,16 @@ Manual checklist:
    process keeps running. **This is the one unproven assumption in this design:
    that the clamshell message still fires while sleep is disabled.** Everything
    else here was verified before implementation.
-2. Open the lid → lock screen, Touch ID unlocks, blackout still on, screen still
-   dim.
-3. External display connected and left on at enable → no watcher spawned
-   (`pgrep -f "blackout --lid-watch"` is empty), closing the lid does not lock.
-   With `-e`, the watcher does run.
-4. `blackout` again to disable → watcher gone.
-5. Toggle twice with ⌃⌥⌘\ → the daemon does not hang (stdio-detach regression).
-6. `blackout --no-lock` → no watcher.
+2. Open the lid → **the lock screen is readable**, not black. This is the
+   decision-5 check; if it fails, the brightness restore is not landing.
+3. Unlock → blackout ends: brightness and volume restored, notification shown,
+   `pmset -g | grep SleepDisabled` reads `0`, and the watcher is gone
+   (`pgrep -f "blackout --lid-watch"` is empty).
+4. Open the lid and close it again *without* unlocking → the session survives and
+   re-locks; `SleepDisabled` still reads `1`.
+5. External display connected and left on at enable → no watcher spawned,
+   closing the lid does not lock. With `-e`, the watcher does run, and both
+   displays are readable after a lid open.
+6. `blackout` again to disable → watcher gone.
+7. Toggle twice with ⌃⌥⌘\ → the daemon does not hang (stdio-detach regression).
+8. `blackout --no-lock` → no watcher.
