@@ -218,6 +218,8 @@ Manual checklist:
    2026-08-12, macOS 26.6.1: it does.** The polling fallback was never needed.
 2. Open the lid → **the lock screen is readable**, not black. This is the
    decision-5 check; if it fails, the brightness restore is not landing.
+   **Verified 2026-08-12:** the open-edge restore wins the race against the
+   panel powering on, so no retry is needed.
 3. Unlock → blackout ends: brightness and volume restored, notification shown,
    `pmset -g | grep SleepDisabled` reads `0`, and the watcher is gone
    (`pgrep -f "blackout --lid-watch"` is empty). **Verified 2026-08-12**, with
