@@ -93,7 +93,7 @@ its absence degrades to a printed "unavailable" rather than a crash.
 - If `saveState` fails, the existing rollback kills the watcher too, alongside
   caffeinate and lid sleep.
 - Status line, one of: `armed` / `skipped (--no-lock)` / `skipped (external
-  monitor left on)` / `unavailable (...)`.
+  monitor left on)` / `unavailable (...)` / `failed to start the watcher`.
 
 **`blackout --lid-watch`** — internal mode, handled early alongside
 `--setup-lid`, not listed in `--help`.
