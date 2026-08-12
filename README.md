@@ -83,6 +83,7 @@ Run the same command to toggle on/off.
 | `-e`, `--dim-external` | Also dim external monitors (left untouched by default) |
 | `-m`, `--no-mute` | Skip muting audio |
 | `-l`, `--no-lid` | Skip disabling lid-close sleep |
+| `-k`, `--no-lock` | Skip locking the screen when the lid closes |
 | `-h`, `--help` | Show help message |
 
 ### Daemon commands
@@ -102,14 +103,15 @@ Run the same command to toggle on/off.
 4. Audio is muted (skipped if external monitor detected)
 5. `caffeinate` prevents idle sleep
 6. Lid-close sleep is disabled (if `--setup-lid` was run; skipped if sleep was already disabled system-wide)
-7. Notification confirms activation
+7. Closing the lid locks the screen immediately — the Mac keeps running, but nobody can open the lid into your session. Opening the lid restores brightness so the lock screen is readable, and unlocking ends blackout entirely. Skipped when an external monitor is left on, so docked clamshell use is unaffected.
+8. Notification confirms activation
 
 ### What happens when disabled
 
 1. Original brightness is restored
 2. External monitor brightness is restored (if it was dimmed)
 3. Audio is unmuted and volume restored (if it was muted)
-4. Sleep prevention is removed and lid-close sleep re-enabled
+4. Sleep prevention is removed, lid-close sleep re-enabled, and the lid watcher stopped
 5. Notification confirms deactivation
 
 ## Keyboard Shortcut
@@ -265,6 +267,26 @@ Run the one-time setup:
 ```bash
 blackout --setup-lid
 ```
+
+### A second `blackout` process is running
+
+That is the lid watcher (`blackout --lid-watch`). It exists only while blackout
+is active and exits when you toggle blackout off — or when you unlock after a
+lid close, which ends the session. Disable it with `--no-lock`.
+
+### The lock screen is black after opening the lid
+
+Blackout sets brightness to 0%, and it restores it when the lid opens. If that
+did not happen, press the brightness-up key — it works at the lock screen — and
+report it: the restore is the part of this feature most likely to be defeated by
+a macOS change.
+
+### Closing the lid does not lock the screen
+
+Check the status line printed when blackout starts. `skipped (external monitor
+left on)` means an external display is connected — that is deliberate, and
+`blackout -e` locks instead. `unavailable` means macOS no longer exposes
+`SACLockScreenImmediate`, and locking would need another mechanism.
 
 ## Limitations
 

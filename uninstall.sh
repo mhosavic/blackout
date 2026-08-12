@@ -19,6 +19,15 @@ if [ -f ~/.blackout.state ]; then
     fi
 fi
 
+# Fallback: stop any lid watcher the toggle did not clean up
+if [ -f ~/.blackout.state ]; then
+    PID=$(grep lidWatcherPID ~/.blackout.state | grep -o '[0-9]*')
+    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+        echo "Stopping lid watcher (PID: $PID)..."
+        kill "$PID" 2>/dev/null
+    fi
+fi
+
 # Re-enable system sleep if it was left disabled
 if pmset -g | grep -q "SleepDisabled.*1"; then
     echo "Re-enabling system sleep (password may be required)..."
