@@ -53,7 +53,9 @@ its absence degrades to a printed "unavailable" rather than a crash.
 
 **Notice the unlock** — the `com.apple.screenIsUnlocked` distributed
 notification, observed through `DistributedNotificationCenter` on the run loop
-the watcher is already running. This is what ends the session (decision 6);
+the watcher is already running. Confirmed present on 26.6.1: `loginwindow`
+carries both the name and its own log line, `Sending com.apple.screenIsUnlocked
+with uid: %@`. This is what ends the session (decision 6);
 lid-open alone must not, since anyone can lift a lid.
 
 ## Decisions (approved 2026-08-12)
