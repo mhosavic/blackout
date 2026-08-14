@@ -1,6 +1,18 @@
 import Foundation
+import CoreGraphics
 
 public struct ExternalDisplayController {
+
+    /// Whether any non-builtin display is online right now. CoreGraphics
+    /// presence, not DDC: it answers even when the display is asleep, which
+    /// is why the lid watcher uses it instead of the m1ddc probe. Returns
+    /// false on failure so callers fail toward locking.
+    public static func isExternalDisplayOnline() -> Bool {
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+        var count: UInt32 = 0
+        guard CGGetOnlineDisplayList(16, &ids, &count) == .success else { return false }
+        return ids.prefix(Int(count)).contains { CGDisplayIsBuiltin($0) == 0 }
+    }
 
     /// Full path to m1ddc, resolved once per run. Homebrew locations are
     /// checked explicitly because the hotkey daemon runs under launchd,

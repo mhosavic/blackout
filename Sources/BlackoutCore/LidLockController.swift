@@ -38,6 +38,15 @@ public struct LidLockController {
         return current ? .closed : .opened
     }
 
+    /// Whether closing the lid should lock, decided at the close edge from
+    /// live evidence rather than once at enable time. Skip only when an
+    /// external display is online right now AND it was left undimmed (docked
+    /// use: the lid is a keyboard cover, not the last screen). With -e the
+    /// external is dark too, so the lid close locks regardless.
+    public static func shouldLockOnLidClose(externalOnline: Bool, externalWasDimmed: Bool) -> Bool {
+        return !externalOnline || externalWasDimmed
+    }
+
     // MARK: - Locking
 
     /// SACLockScreenImmediate is the same lock as ⌃⌘Q: immediate regardless of

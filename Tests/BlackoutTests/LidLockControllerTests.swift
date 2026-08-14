@@ -29,6 +29,30 @@ struct LidLockControllerTests {
         #expect(LidLockController.transition(previous: nil, current: false) == LidLockController.LidTransition.none)
     }
 
+    // MARK: - Close-edge lock policy
+
+    @Test func locksWhenNoExternalDisplayIsOnline() {
+        #expect(LidLockController.shouldLockOnLidClose(externalOnline: false, externalWasDimmed: false))
+    }
+
+    /// -e dimmed an external that has since been unplugged: nothing usable
+    /// remains, so the lid close must lock
+    @Test func locksWhenTheDimmedExternalWasUnplugged() {
+        #expect(LidLockController.shouldLockOnLidClose(externalOnline: false, externalWasDimmed: true))
+    }
+
+    /// Docked use: a live, undimmed external means the lid is a keyboard
+    /// cover, not the last screen — closing it must not lock
+    @Test func skipsTheLockWhileAnUndimmedExternalIsOnline() {
+        #expect(!LidLockController.shouldLockOnLidClose(externalOnline: true, externalWasDimmed: false))
+    }
+
+    /// -e means everything is dark and the user walked away — lock even
+    /// though the external is still online
+    @Test func locksWhenTheOnlineExternalWasDimmed() {
+        #expect(LidLockController.shouldLockOnLidClose(externalOnline: true, externalWasDimmed: true))
+    }
+
     // MARK: - Watcher process
 
     /// startWatcher() is deliberately not tested: it spawns
