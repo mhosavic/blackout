@@ -165,9 +165,62 @@ pre-upgrade state files still decode, following the `sleepDisabled` precedent.
 
 ## Out of scope
 
-No re-evaluation when displays are plugged or unplugged mid-session (toggle
-blackout off and on to re-decide), no lock on idle timeout, and no watcher
-liveness reporting in `--status`.
+No lock on idle timeout, and no watcher liveness reporting in `--status`.
+
+## Revision — dynamic per-event policy (approved 2026-08-13)
+
+Field use exposed two flaws in decisions 2–3 (decide once, at enable time):
+
+- **Docked lid cycle broke the brightness invariant.** With an external left on,
+  no watcher was spawned at all, so nothing owned blackout's state across lid
+  events. macOS re-lights the internal panel on lid open; the screen came back
+  bright while blackout — including the invisible `SleepDisabled 1` — stayed
+  on. Observed by the user on 2026-08-13.
+- **Unplugging the external mid-session left the lid unprotected.** The skip
+  decision was frozen at enable, so after a disconnect, closing the lid locked
+  nothing, and the "a usable screen exists" rationale no longer held.
+
+The unlock path was audited for the reverse scenario (close undocked → connect
+a display while closed → open → unlock): it was already display-independent and
+safe. The revision makes that a stated rule rather than a happenstance.
+
+New decisions, superseding 2 and 3:
+
+8. **The watcher always runs** (unless `--no-lock` or the lock symbol is
+   missing). External-display presence no longer gates the spawn.
+9. **Lock-or-skip is decided at each lid close**, from live evidence:
+   `shouldLockOnLidClose(externalOnline:externalWasDimmed:)` — skip only when
+   an external display is online *now* (CoreGraphics presence,
+   `CGGetOnlineDisplayList` + `CGDisplayIsBuiltin`, verified on 26.6.1) *and*
+   it was not dimmed by `-e` (`state.externalLuminance == nil`). The CG probe
+   involves no DDC, so the old objection to re-probing (m1ddc against a
+   sleeping display) does not apply. If the display query fails, fail toward
+   locking.
+10. **Lid open branches on lock state.** The watcher tracks the lock via
+    `com.apple.screenIsLocked` / `com.apple.screenIsUnlocked` observers
+    (delivered on the main queue so all state stays on one thread; seeded
+    unlocked, since enabling blackout requires an unlocked session). Open while
+    locked → restore displays for a readable lock screen. Open while unlocked
+    (a docked lid cycle) → **re-dim the internal panel**, defeating macOS's
+    auto-relight so brightness keeps telling the truth.
+11. **Unlocking ends the session unconditionally, everywhere.** No display
+    check, no docked exception. In docked use this means a screensaver
+    lock/unlock cycle ends blackout — accepted for one-rule predictability;
+    re-enabling is one hotkey.
+12. **A manual lock (⌃⌘Q, screensaver) does not restore brightness.** First
+    proposed, then rejected: `caffeinate -d` holds the display awake, so a
+    restore at lock time would leave the lock screen lit indefinitely —
+    blackout's opposite. The dark manual-lock screen is documented (brightness
+    keys work at the lock screen), and unlocking still ends the session.
+
+Known edge, accepted: unlocking while the lid is closed (clamshell, external
+screen) runs `disable()` against a powered-off internal panel; whether that
+brightness write sticks for the eventual lid open is unverifiable without
+hardware. If it does not, the brightness key recovers, and the session is
+already over.
+
+Status line while docked now reads `armed (lid close skips the lock while the
+external display is in use)`.
 
 ## Files touched
 
