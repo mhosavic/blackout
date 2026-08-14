@@ -104,13 +104,15 @@ public struct LidLockController {
         kill(pid, SIGTERM)
     }
 
-    /// Watch the lid and the lock screen, calling back on each event. Blocks on
-    /// the current run loop and does not return while watching; returns false
-    /// if the notification could not be registered.
+    /// Watch the lid and the lock screen, calling back on each event. The lid
+    /// open callback receives whether the screen is currently locked, so the
+    /// caller can restore for a readable lock screen or re-dim a docked cycle.
+    /// Blocks on the current run loop and does not return while watching;
+    /// returns false if the notification could not be registered.
     @discardableResult
     public static func watch(
         onLidClose: @escaping () -> Void,
-        onLidOpen: @escaping () -> Void,
+        onLidOpen: @escaping (_ screenLocked: Bool) -> Void,
         onUnlock: @escaping () -> Void
     ) -> Bool {
         let watcher = LidWatcher(onLidClose: onLidClose, onLidOpen: onLidOpen, onUnlock: onUnlock)
@@ -129,14 +131,17 @@ public struct LidLockController {
 private final class LidWatcher {
 
     private let onLidClose: () -> Void
-    private let onLidOpen: () -> Void
+    private let onLidOpen: (Bool) -> Void
     private let onUnlock: () -> Void
     private var previous: Bool?
+    // Maintained by the screenIsLocked/Unlocked observers. Seeded false:
+    // enabling blackout requires an unlocked session (hotkey or CLI).
+    private var screenLocked = false
     private var notification: io_object_t = 0
 
     init(
         onLidClose: @escaping () -> Void,
-        onLidOpen: @escaping () -> Void,
+        onLidOpen: @escaping (Bool) -> Void,
         onUnlock: @escaping () -> Void
     ) {
         self.onLidClose = onLidClose
@@ -149,12 +154,23 @@ private final class LidWatcher {
 
     func start() -> Bool {
         // Unlocking is what ends a session, so it is watched separately from
-        // the lid: anyone can lift a lid, only the owner can authenticate
-        DistributedNotificationCenter.default().addObserver(
+        // the lid: anyone can lift a lid, only the owner can authenticate.
+        // Observers run on the main queue — the same thread CFRunLoopRun
+        // occupies — so screenLocked is never touched from two threads.
+        let center = DistributedNotificationCenter.default()
+        center.addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.screenLocked = true
+        }
+        center.addObserver(
             forName: Notification.Name("com.apple.screenIsUnlocked"),
             object: nil,
-            queue: nil
+            queue: .main
         ) { [weak self] _ in
+            self?.screenLocked = false
             self?.onUnlock()
         }
 
@@ -196,7 +212,7 @@ private final class LidWatcher {
 
         switch transition {
         case .closed: onLidClose()
-        case .opened: onLidOpen()
+        case .opened: onLidOpen(screenLocked)
         case .none: break
         }
     }

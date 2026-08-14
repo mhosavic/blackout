@@ -19,22 +19,39 @@ if args.contains("--lid-watch") {
     let watching = LidLockController.watch(
         onLidClose: {
             guard let state = StateManager.loadState() else { exit(0) }
-            // Undo the dim before locking. The panel may already be powering
-            // down, so this is best-effort; the open handler is the one that
-            // has to land.
-            restoreDisplays(state: state)
-            LidLockController.lockScreen()
+            // Decided here, not at enable time, so plugging or unplugging a
+            // display mid-session changes the outcome — unplugged means the
+            // protection comes back, docked means the session stays usable
+            let lock = LidLockController.shouldLockOnLidClose(
+                externalOnline: ExternalDisplayController.isExternalDisplayOnline(),
+                externalWasDimmed: state.externalLuminance != nil
+            )
+            if lock {
+                // Undo the dim before locking. The panel may already be
+                // powering down, so this is best-effort; the open handler is
+                // the one that has to land.
+                restoreDisplays(state: state)
+                LidLockController.lockScreen()
+            }
         },
-        onLidOpen: {
+        onLidOpen: { screenLocked in
             guard let state = StateManager.loadState() else { exit(0) }
-            // Without this the lock screen is a black rectangle and the
-            // password field cannot be seen
-            restoreDisplays(state: state)
+            if screenLocked {
+                // Without this the lock screen is a black rectangle and the
+                // password field cannot be seen
+                restoreDisplays(state: state)
+            } else {
+                // Docked lid cycle: macOS re-lights the panel on open, which
+                // would leave a bright screen with blackout still on — re-dim
+                // so brightness keeps telling the truth
+                BrightnessController.dimScreen()
+            }
         },
         onUnlock: {
             guard let state = StateManager.loadState() else { exit(0) }
             // Authenticating means the owner is back: end the session so the
-            // restored brightness keeps telling the truth about blackout
+            // restored brightness keeps telling the truth about blackout.
+            // Unconditional on purpose — no display check may ever gate this.
             disable(state: state)
             exit(0)
         }
@@ -114,11 +131,11 @@ func enable(dimExternal: Bool, noMute: Bool, noLid: Bool, noLock: Bool) {
     let hasExternalDisplay = detectedLuminance != nil
     let skipMute = noMute || hasExternalDisplay
 
-    // An external display left on means the lid is a keyboard cover, not a
-    // screen — docked clamshell work must not lock. With --dim-external
-    // everything is dark and locking is the point.
+    // The watcher always runs; whether a given lid close locks is decided at
+    // that moment from live display presence. externalLeftOn only shapes the
+    // status line below.
     let externalLeftOn = hasExternalDisplay && !dimExternal
-    let lockOnLid = !noLock && !externalLeftOn && LidLockController.isLockAvailable()
+    let lockOnLid = !noLock && LidLockController.isLockAvailable()
 
     // Save current brightness, volume, and external display luminance
     let currentBrightness = BrightnessController.getBrightness()
@@ -195,11 +212,13 @@ func enable(dimExternal: Bool, noMute: Bool, noLid: Bool, noLock: Bool) {
         print("  Lid sleep: unavailable (run 'blackout --setup-lid' once to enable)")
     }
     if lidWatcherPID != nil {
-        print("  Lock on lid close: armed (unlocking ends blackout)")
+        if externalLeftOn {
+            print("  Lock on lid close: armed (skips the lock while the external display is in use)")
+        } else {
+            print("  Lock on lid close: armed (unlocking ends blackout)")
+        }
     } else if noLock {
         print("  Lock on lid close: skipped (--no-lock)")
-    } else if externalLeftOn {
-        print("  Lock on lid close: skipped (external monitor left on)")
     } else if !LidLockController.isLockAvailable() {
         print("  Lock on lid close: unavailable (SACLockScreenImmediate not found)")
     } else {
