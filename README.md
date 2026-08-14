@@ -103,7 +103,7 @@ Run the same command to toggle on/off.
 4. Audio is muted (skipped if external monitor detected)
 5. `caffeinate` prevents idle sleep
 6. Lid-close sleep is disabled (if `--setup-lid` was run; skipped if sleep was already disabled system-wide)
-7. Closing the lid locks the screen immediately — the Mac keeps running, but nobody can open the lid into your session. Opening the lid restores brightness so the lock screen is readable, and unlocking ends blackout entirely. Skipped when an external monitor is left on, so docked clamshell use is unaffected.
+7. Closing the lid locks the screen immediately — the Mac keeps running, but nobody can open the lid into your session. The decision is made at the moment you close the lid: if an external display is connected and left undimmed, the lock is skipped so docked use keeps working (and the internal screen is re-dimmed when the lid reopens); otherwise it locks, even if the external was unplugged mid-session. Opening the lid onto a lock screen restores brightness so it is readable, and unlocking ends blackout entirely — always, regardless of connected displays.
 8. Notification confirms activation
 
 ### What happens when disabled
@@ -283,10 +283,18 @@ a macOS change.
 
 ### Closing the lid does not lock the screen
 
-Check the status line printed when blackout starts. `skipped (external monitor
-left on)` means an external display is connected — that is deliberate, and
-`blackout -e` locks instead. `unavailable` means macOS no longer exposes
-`SACLockScreenImmediate`, and locking would need another mechanism.
+If an external display was connected and left undimmed at that moment, the skip
+is deliberate — the external is treated as your working screen, and `blackout
+-e` locks instead. Otherwise check the status line printed when blackout
+started: `unavailable` means macOS no longer exposes `SACLockScreenImmediate`,
+and locking would need another mechanism.
+
+### Locking manually leaves the screen dark
+
+Locking with ⌃⌘Q (or the screensaver) while blackout is on does not restore
+brightness — blackout would otherwise sit lit at the lock screen indefinitely,
+since it prevents display sleep. Press the brightness-up key at the lock
+screen, or unlock by Touch ID; unlocking ends blackout either way.
 
 ## Limitations
 
