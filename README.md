@@ -74,7 +74,7 @@ This session
 Settings (apply the next time Blackout turns on)
   Mute audio                              ▸
   Dim the external display too
-  Turn the built-in display off when docked
+  Built-in display when docked            ▸
 ✓ Keep awake with the lid closed
 ✓ Lock when the lid closes
 ✓ Show notifications
@@ -96,7 +96,7 @@ Quit Blackout
 |---------|----------------------|--------|---------|
 | Mute audio | `mute` | `auto` (only without an external display), `always`, `never` | `auto` |
 | Dim the external display too | `dim-external` | `on`, `off` | `off` |
-| Turn the built-in display off when docked | `builtin-off` | `on`, `off` | `off` |
+| Built-in display when docked | `builtin-off` | `off` (dim it), `on` (turn it off) | `off` |
 | Keep awake with the lid closed | `lid` | `on`, `off` | `on` |
 | Lock when the lid closes | `lock` | `on`, `off` | `on` |
 | Show notifications | `notifications` | `on`, `off` | `on` |
@@ -112,10 +112,10 @@ They live in `~/.blackout/config.json`. A setting changed while blackout is on t
 
 ### Turning the built-in display off when docked
 
-With the lid open and an external monitor in use, a dimmed built-in display is still the Mac's main display, and macOS shows notification banners on the main display — so they land on a black screen. Turn on "Turn the built-in display off when docked" (`blackout config builtin-off on`) and blackout switches the built-in display off instead of dimming it. To macOS that looks like a closed lid:
+With the lid open and an external monitor in use, a dimmed built-in display is still the Mac's main display, and macOS shows notification banners on the main display — so they land on a black screen. In the menu, under **Built-in display when docked**, choose "Turn it off" (or run `blackout config builtin-off on`) and blackout switches the built-in display off instead of dimming it. To macOS that looks like a closed lid:
 
 - the external monitor becomes the main display and shows notifications, the Dock and new windows;
-- windows that were on the built-in display move to the external one, and move back when blackout turns off;
+- windows that were on the built-in display move to the external one, and macOS moves them back when blackout turns off. This is the price of the mode: macOS cannot send notifications to the external monitor without also moving the windows. If you would rather keep every window where it is, choose "Dim it", the default;
 - the keyboard, trackpad, camera and Touch ID keep working.
 
 It only applies while an external monitor is in use, never to the last remaining screen. If you unplug the monitor while blackout is on, the built-in display comes back on, dimmed. It relies on an undocumented macOS call; if a macOS update removes it, blackout dims the display as before and the menu says so. If the built-in display ever stays off, close and reopen the lid.
@@ -165,7 +165,7 @@ An argument blackout does not recognize is an error; it never falls through to a
 ### What happens when blackout turns on
 
 1. Your current brightness and volume are saved
-2. The built-in display dims to 0% (or is switched off, with "Turn the built-in display off when docked" and an external monitor in use)
+2. The built-in display dims to 0% (or is switched off, when "Built-in display when docked" is set to "Turn it off" and an external monitor is in use)
 3. External monitors stay untouched — they remain your working screen (unless "Dim the external display too" is on; requires m1ddc)
 4. Audio is muted (left on when an external monitor is in use, unless set to always or never). If you had already muted it yourself, blackout leaves it alone and does not un-mute it afterwards.
 5. `caffeinate` prevents idle sleep

@@ -65,6 +65,22 @@ public enum MenuModel {
                         isOn: settings.muteAudio == policy
                     )
                 }))
+            } else if key == "builtin-off" {
+                // A choice of two named behaviors rather than a checkbox:
+                // each label says what happens to the windows, which a bare
+                // "turn off" does not
+                items.append(.submenu(title: "Built-in display when docked", items: [
+                    .toggle(
+                        title: "Dim it (windows stay where they are)",
+                        action: .set(key: key, value: "off"),
+                        isOn: !settings.builtinOff
+                    ),
+                    .toggle(
+                        title: "Turn it off (notifications and its windows move to the external display)",
+                        action: .set(key: key, value: "on"),
+                        isOn: settings.builtinOff
+                    )
+                ]))
             } else {
                 let isOn = settings.value(forKey: key) == "on"
                 items.append(.toggle(title: title, action: .set(key: key, value: isOn ? "off" : "on"), isOn: isOn))

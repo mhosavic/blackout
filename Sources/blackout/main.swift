@@ -28,7 +28,8 @@ Settings (blackout config <key> <value>):
   mute           auto|always|never   auto mutes only without an external display
   dim-external   on|off
   builtin-off    on|off              docked, switch the built-in display off instead of
-                                     dimming it, so notifications show on the external one
+                                     dimming it: notifications show on the external one,
+                                     and the built-in display's windows move there too
   lid            on|off
   lock           on|off
   notifications  on|off

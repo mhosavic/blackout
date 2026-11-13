@@ -107,6 +107,22 @@ struct MenuModelTests {
         #expect(custom.contains(.action(title: "Change Hotkey (⇧⌘B)…", action: .changeHotkey, showsHotkey: false)))
     }
 
+    /// Not a bare checkbox: each choice says what it does to the windows,
+    /// because switching the display off moves them and that surprised
+    /// the first person who used it
+    @Test func builtinDisplayIsAChoiceThatNamesItsConsequences() {
+        #expect(menu().contains(.submenu(title: "Built-in display when docked", items: [
+            .toggle(title: "Dim it (windows stay where they are)", action: .set(key: "builtin-off", value: "off"), isOn: true),
+            .toggle(title: "Turn it off (notifications and its windows move to the external display)", action: .set(key: "builtin-off", value: "on"), isOn: false)
+        ])))
+
+        let off = menu { $0.builtinOff = true }
+        #expect(off.contains(.submenu(title: "Built-in display when docked", items: [
+            .toggle(title: "Dim it (windows stay where they are)", action: .set(key: "builtin-off", value: "off"), isOn: false),
+            .toggle(title: "Turn it off (notifications and its windows move to the external display)", action: .set(key: "builtin-off", value: "on"), isOn: true)
+        ])))
+    }
+
     @Test func toggleActionsFlipTheValue() {
         let items = menu()
         #expect(toggle(items, titled: "Lock when the lid closes")?.action == .set(key: "lock", value: "off"))
@@ -125,7 +141,7 @@ struct MenuModelTests {
                 }
             }
         }
-        #expect(actions.count == 8)
+        #expect(actions.count == 9)
         for action in actions {
             guard case .set(let key, let value) = action else {
                 Issue.record("settings item carries \(action)")
