@@ -25,6 +25,11 @@ public struct ExternalDisplayController {
         return Shell.output("/usr/bin/which", ["m1ddc"])
     }()
 
+    /// Whether m1ddc, which dimming an external display depends on, is installed
+    public static func isM1ddcInstalled() -> Bool {
+        return m1ddcPath != nil
+    }
+
     /// Get the current luminance of external display (0 - 100, or nil if unavailable)
     public static func getLuminance() -> Int? {
         guard let m1ddc = m1ddcPath else { return nil }

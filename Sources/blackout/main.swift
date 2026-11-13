@@ -1,21 +1,153 @@
 import Foundation
 import BlackoutCore
 
-// Main entry point for blackout CLI tool
-// Running this command toggles blackout mode on/off
+// Main entry point for the blackout CLI. Parses the command, hands it to
+// BlackoutCore and prints the result; the logic lives in the library.
 
-// Parse command-line arguments
-let args = CommandLine.arguments
-let dimExternalFlag = args.contains("--dim-external") || args.contains("-e")
-let noMuteFlag = args.contains("--no-mute") || args.contains("-m")
-let noLidFlag = args.contains("--no-lid") || args.contains("-l")
-let noLockFlag = args.contains("--no-lock") || args.contains("-k")
+let helpText = """
+blackout - black out the screen while the Mac keeps working
 
-// Internal mode: the detached watcher spawned by enable(). Not in --help —
-// users never run it directly, but it is visible in `ps` as `blackout --lid-watch`.
-// Each handler reloads state: if the session ended without this process being
-// killed, there is nothing left to act on.
-if args.contains("--lid-watch") {
+Usage:
+  blackout [toggle|on|off] [options]   Toggle is the default
+  blackout status                      What is on, the settings, the setup
+  blackout config [<key> <value>]      Show the saved settings, or change one
+  blackout install                     Install the menu bar app and hotkey (via 'make install')
+  blackout uninstall                   Remove the menu bar app and hotkey
+  blackout setup-lid                   One-time setup so blackout can keep the Mac awake
+                                       with the lid closed (writes /etc/sudoers.d/blackout)
+  blackout help
+
+Options, for this run only (the saved settings apply otherwise):
+  -e, --dim-external / --no-dim-external   Dim external monitors too, or leave them on
+      --mute / -m, --no-mute               Mute audio, or leave it on
+      --lid / -l, --no-lid                 Keep awake with the lid closed, or not
+      --lock / -k, --no-lock               Lock the screen when the lid closes, or not
+
+Settings (blackout config <key> <value>):
+  mute           auto|always|never   auto mutes only without an external display
+  dim-external   on|off
+  lid            on|off
+  lock           on|off
+  notifications  on|off
+
+When on: dims the screen, mutes audio, prevents sleep (even with the lid
+closed, after setup-lid) and locks the screen when the lid closes. Unlocking
+then ends blackout. Turning it off restores everything.
+
+Hotkey (when the menu bar app is installed): ⌃⌥⌘\\ (Ctrl+Option+Cmd+Backslash)
+"""
+
+func printStandardError(_ message: String) {
+    FileHandle.standardError.write(Data((message + "\n").utf8))
+}
+
+func printIndented(_ lines: [String]) {
+    for line in lines {
+        print("  \(line)")
+    }
+}
+
+func turnOn(_ overrides: Overrides) {
+    let settings = overrides.applied(to: Settings.load())
+    switch Session().enable(settings: settings) {
+    case .enabled(let report):
+        print("Blackout is on")
+        printIndented(SessionText.sessionLines(
+            state: report.state,
+            externalOnline: ExternalDisplayController.isExternalDisplayOnline()
+        ))
+        print("  Run 'blackout' again to turn it off")
+    case .alreadyOn:
+        print("Blackout is already on")
+    case .busy:
+        printStandardError("Another blackout command is still running — try again in a moment")
+        exit(1)
+    case .failed(let message):
+        printStandardError(message)
+        exit(1)
+    }
+}
+
+func turnOff() {
+    switch Session().disable(notify: Settings.load().notifications) {
+    case .disabled(let report):
+        let state = report.state
+        if report.recoveredStaleSession {
+            print("Recovering stale session (caffeinate was no longer running)")
+        }
+        print("Blackout is off")
+        print("  Brightness restored to \(Int((state.originalBrightness * 100).rounded()))%")
+        if let luminance = state.externalLuminance {
+            print("  External display restored to \(luminance)%")
+        }
+        if let volume = state.originalVolume {
+            print("  Volume restored to \(volume)%")
+        }
+        if report.lidSleepRestoreFailed {
+            print("  WARNING: could not re-enable sleep!")
+            print("  Your Mac will NOT sleep until you run: sudo pmset -a disablesleep 0")
+        } else if state.sleepDisabled == true {
+            print("  Lid sleep re-enabled")
+        }
+    case .alreadyOff:
+        print("Blackout is already off")
+    case .corruptState:
+        printStandardError("State file is corrupt — clearing it.")
+        printStandardError("Brightness, volume, or sleep settings may need manual restoring.")
+        exit(1)
+    }
+}
+
+func showStatus() {
+    let state = StateManager.loadState()
+    print(SessionText.headline(state: state, stateFileExists: StateManager.hasState(), now: Date()))
+    if let state {
+        printIndented(SessionText.sessionLines(
+            state: state,
+            externalOnline: ExternalDisplayController.isExternalDisplayOnline()
+        ))
+    }
+
+    print("")
+    print("Settings (change with 'blackout config <key> <value>')")
+    printIndented(SessionText.settingsLines(Settings.load()))
+
+    let health = Health.check()
+    print("")
+    print("Setup")
+    print("  Lid-closed mode: \(health.lidSetupInstalled ? "ready" : "not set up (run 'blackout setup-lid')")")
+    print("  m1ddc: \(health.m1ddcInstalled ? "installed" : "not installed (needed to see and dim an external display)")")
+    print("  Screen lock: \(health.lockAvailable ? "available" : "unavailable (macOS lock call missing)")")
+    if SleepController.isSleepDisabled() {
+        print("  Note: system sleep is currently disabled")
+    }
+
+    print("")
+    DaemonController.status()
+}
+
+func setConfig(key: String, value: String) {
+    var settings = Settings.load()
+    guard settings.set(key: key, value: value) else {
+        printStandardError("Cannot set '\(key)' to '\(value)'. The settings and their values:")
+        for line in SessionText.settingsLines(settings) {
+            printStandardError("  \(line)")
+        }
+        exit(2)
+    }
+    guard settings.save() else {
+        printStandardError("Could not write \(Settings.fileURL.path)")
+        exit(1)
+    }
+    print(SessionText.settingsLines(settings)[Settings.keys.firstIndex(of: key) ?? 0])
+    if StateManager.hasState() {
+        print("Blackout is on: this applies the next time it turns on.")
+    }
+}
+
+/// The detached watcher a session spawns. Not in the help — users never run
+/// it directly, but it is visible in `ps` as `blackout --lid-watch`.
+func watchLid() -> Never {
     let session = Session()
     func act(_ action: Session.WatcherAction) {
         if action == .stop { exit(0) }
@@ -28,124 +160,44 @@ if args.contains("--lid-watch") {
     exit(watching ? 0 : 1)
 }
 
-// One-time setup for passwordless lid-sleep control
-if args.contains("--setup-lid") {
-    SleepController.setupLid()
-    exit(0)
-}
+switch CommandLineParser.parse(Array(CommandLine.arguments.dropFirst())) {
+case .failure(let error):
+    printStandardError(error.message)
+    printStandardError("Run 'blackout help' for usage.")
+    exit(2)
 
-// Daemon commands
-if args.contains("--install") {
-    DaemonController.install()
-    exit(0)
-}
-
-if args.contains("--uninstall") {
-    DaemonController.uninstall()
-    exit(0)
-}
-
-if args.contains("--status") {
-    DaemonController.status()
-    exit(0)
-}
-
-// Show help if requested
-if args.contains("--help") || args.contains("-h") {
-    print("blackout - Toggle screen blackout mode")
-    print("")
-    print("Usage: blackout [options]")
-    print("")
-    print("Options:")
-    print("  -e, --dim-external Also dim external monitors (untouched by default)")
-    print("  -m, --no-mute      Skip muting audio")
-    print("  -l, --no-lid       Skip disabling lid-close sleep")
-    print("  -k, --no-lock      Skip locking the screen when the lid closes")
-    print("  -h, --help         Show this help message")
-    print("")
-    print("Daemon commands:")
-    print("  --install          Install hotkey daemon (runs at login)")
-    print("  --uninstall        Remove hotkey daemon")
-    print("  --status           Show daemon status")
-    print("")
-    print("Setup commands:")
-    print("  --setup-lid        One-time setup so blackout can keep the Mac awake")
-    print("                     with the lid closed (writes /etc/sudoers.d/blackout)")
-    print("")
-    print("Running 'blackout' toggles blackout mode on/off.")
-    print("When enabled: dims screen, mutes audio, prevents sleep (even lid close,")
-    print("after --setup-lid) and locks the screen when the lid closes — unlocking")
-    print("then ends blackout. Audio is automatically kept unmuted when an external")
-    print("monitor is detected, which also leaves the lid lock off. Run again to")
-    print("restore original settings.")
-    print("")
-    print("Hotkey (when daemon installed): ⌃⌥⌘\\ (Ctrl+Option+Cmd+Backslash)")
-    exit(0)
-}
-
-func printEnabled(_ state: BlackoutState) {
-    print("Blackout: ENABLED")
-    print("  Original brightness: \(String(format: "%.0f", state.originalBrightness * 100))%")
-    if let summary = state.summary {
-        print("  External display: \(summary.external.rawValue)")
-        print("  Audio: \(summary.audio.rawValue)")
-        print("  Lid sleep: \(summary.lidSleep.rawValue)")
-        print("  Lock on lid close: \(summary.lidLock.rawValue)")
-    }
-    print("  Run 'blackout' again to disable")
-}
-
-func printDisabled(_ report: Session.DisableReport) {
-    let state = report.state
-    if report.recoveredStaleSession {
-        print("Recovering stale session (caffeinate was no longer running)")
-    }
-    print("Blackout: DISABLED")
-    print("  Brightness restored to: \(String(format: "%.0f", state.originalBrightness * 100))%")
-    if let extLum = state.externalLuminance {
-        print("  External display restored to: \(extLum)%")
-    }
-    if let vol = state.originalVolume {
-        print("  Volume restored to: \(vol)%")
-    }
-    if report.lidSleepRestoreFailed {
-        print("  WARNING: could not re-enable sleep!")
-        print("  Your Mac will NOT sleep until you run: sudo pmset -a disablesleep 0")
-    } else if state.sleepDisabled == true {
-        print("  Lid sleep: re-enabled")
-    }
-}
-
-// Toggle based on saved state
-let session = Session()
-var settings = Settings.load()
-if dimExternalFlag { settings.dimExternal = true }
-if noMuteFlag { settings.muteAudio = .never }
-if noLidFlag { settings.keepAwakeLidClosed = false }
-if noLockFlag { settings.lockOnLidClose = false }
-
-if StateManager.hasState() {
-    switch session.disable(notify: settings.notifications) {
-    case .disabled(let report):
-        printDisabled(report)
-    case .alreadyOff:
-        print("Blackout is already off")
-    case .corruptState:
-        print("State file is corrupt — clearing it.")
-        print("Brightness, volume, or sleep settings may need manual restoring.")
-        exit(1)
-    }
-} else {
-    switch session.enable(settings: settings) {
-    case .enabled(let report):
-        printEnabled(report.state)
-    case .alreadyOn:
-        print("Blackout is already on")
-    case .busy:
-        print("Another blackout command is still running")
-        exit(1)
-    case .failed(let message):
-        print(message)
-        exit(1)
+case .success(let command):
+    switch command {
+    case .toggle(let overrides):
+        // Direction is read here, before waiting for the session lock, and
+        // each action is a no-op if already done: two toggles fired together
+        // then collapse into one instead of turning on and straight off
+        if StateManager.hasState() {
+            turnOff()
+        } else {
+            turnOn(overrides)
+        }
+    case .on(let overrides):
+        turnOn(overrides)
+    case .off:
+        turnOff()
+    case .status:
+        showStatus()
+    case .configShow:
+        for line in SessionText.settingsLines(Settings.load()) {
+            print(line)
+        }
+    case .configSet(let key, let value):
+        setConfig(key: key, value: value)
+    case .install:
+        DaemonController.install()
+    case .uninstall:
+        DaemonController.uninstall()
+    case .setupLid:
+        SleepController.setupLid()
+    case .lidWatch:
+        watchLid()
+    case .help:
+        print(helpText)
     }
 }

@@ -138,14 +138,6 @@ public struct DaemonController {
         print("")
         print("Hotkey: ⌃⌥⌘\\ (Ctrl+Option+Cmd+Backslash)")
 
-        // Lid-sleep setup state
-        print("")
-        let lidReady = SleepController.isLidSetupInstalled()
-        print("Lid sleep prevention: \(lidReady ? "ready" : "not configured (run 'blackout --setup-lid')")")
-        if SleepController.isSleepDisabled() {
-            print("  Note: system sleep is currently disabled")
-        }
-
         // Show log tail if exists
         if fm.fileExists(atPath: PathManager.daemonLog.path) {
             print("")
