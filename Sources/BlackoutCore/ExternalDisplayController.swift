@@ -34,10 +34,20 @@ public struct ExternalDisplayController {
     public static func getLuminance() -> Int? {
         guard let m1ddc = m1ddcPath else { return nil }
 
-        if let output = Shell.output(m1ddc, ["get", "luminance"]),
-           let luminance = Int(output) {
+        // Some monitors drop a DDC read now and then, and a miss here makes
+        // a connected monitor count as unplugged — so ask up to three times
+        return firstReading(attempts: 3) {
+            guard let output = Shell.output(m1ddc, ["get", "luminance"]),
+                  let luminance = Int(output) else { return nil }
             // Some monitors return negative values; default to 15 in that case
             return luminance >= 0 ? luminance : 15
+        }
+    }
+
+    /// The first non-nil result of `read`, trying up to `attempts` times
+    public static func firstReading(attempts: Int, read: () -> Int?) -> Int? {
+        for _ in 0..<attempts {
+            if let reading = read() { return reading }
         }
         return nil
     }
