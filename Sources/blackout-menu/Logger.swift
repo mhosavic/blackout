@@ -1,4 +1,5 @@
 import Foundation
+import BlackoutCore
 
 struct Logger {
 
@@ -6,8 +7,7 @@ struct Logger {
     private static let timestampFormatter = ISO8601DateFormatter()
 
     private static var logFileURL: URL {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        return homeDir.appendingPathComponent(".blackout/daemon.log")
+        return PathManager.daemonLog
     }
 
     /// Log a message with timestamp
@@ -44,11 +44,6 @@ struct Logger {
     /// Log an error message
     static func error(_ message: String) {
         log("ERROR: \(message)")
-    }
-
-    /// Log a debug message
-    static func debug(_ message: String) {
-        log("DEBUG: \(message)")
     }
 
     /// Rotate log file if it exceeds max size

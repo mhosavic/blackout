@@ -43,8 +43,9 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "blackout-daemon",
-            path: "Sources/blackout-daemon",
+            name: "blackout-menu",
+            dependencies: ["BlackoutCore"],
+            path: "Sources/blackout-menu",
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ],
