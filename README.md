@@ -1,59 +1,47 @@
+<p align="center"><img src="docs/logo.png" width="128" alt="Blackout icon: a total eclipse"></p>
+
 # Blackout
 
-Black out your Mac screen while keeping it awake. One command to toggle on/off.
+Black out your Mac screen while it keeps working. One hotkey, one menu bar icon, one command.
 
 ## Features
 
-- **Blacks out screen** - Dims display to 0%
-- **Global hotkey** - Press `⌃⌥⌘\` to toggle from anywhere (daemon required)
-- **External monitor aware** - A connected monitor stays lit as your working screen (dim it too with `--dim-external`, requires m1ddc)
-- **Smart audio muting** - Mutes audio, but auto-skips when external monitor is detected
-- **Prevents sleep** - Keeps your Mac awake (no idle sleep)
-- **Survives lid close** - Processes keep running with the lid shut (after one-time `--setup-lid`)
-- **Toggle on/off** - Same command to enable and disable
-- **Remembers state** - Restores your original brightness and volume when disabled
-- **macOS notifications** - Visual feedback when toggling
-- **Apple Silicon support** - M1/M2/M3/M4 compatible
+- **Blacks out the screen** - dims the built-in display to 0%
+- **Menu bar icon** - shows at a glance whether blackout is on; its menu shows what the current session did and holds every setting
+- **Global hotkey** - `⌃⌥⌘\` toggles from anywhere
+- **Saved settings** - choose what a session does once; the hotkey, the menu and the command all follow it
+- **External monitor aware** - a connected monitor stays lit as your working screen (dimming it too is a setting, requires m1ddc)
+- **Smart audio muting** - mutes audio, but leaves it on when an external monitor is in use
+- **Prevents sleep** - keeps the Mac awake, even with the lid closed (after one-time `blackout setup-lid`)
+- **Locks on lid close** - closing the lid locks the screen while everything keeps running; unlocking ends blackout
+- **Restores everything** - brightness, volume and sleep come back exactly as they were
 
 ## Requirements
 
-- macOS 14.0 (Sonoma) or later
+- macOS 14.0 (Sonoma) or later, Apple Silicon
 - Xcode Command Line Tools (`xcode-select --install`)
 - Optional: [m1ddc](https://github.com/waydabber/m1ddc) for external monitor support (`brew install m1ddc`)
 
 ## Installation
 
-### Build from source
-
 ```bash
-# Clone the repository
 git clone https://github.com/YOUR_USERNAME/blackout.git
 cd blackout
-
-# Build
-swift build -c release
-
-# Install to ~/bin (create if needed)
-mkdir -p ~/bin
-cp .build/release/blackout ~/bin/
-
-# Add ~/bin to PATH (if not already)
-echo 'export PATH=$HOME/bin:$PATH' >> ~/.zshrc
-source ~/.zshrc
+make install
 ```
 
-### Enable global hotkey
+`make install` builds a release, assembles `Blackout.app` (the menu bar app and the `blackout` command together), and:
 
-```bash
-blackout --install
-```
+- installs it to `~/Applications/Blackout.app`
+- links the command at `~/bin/blackout` (add `~/bin` to your `PATH` to use it from a terminal)
+- registers a LaunchAgent so the menu bar app starts at login
 
-This installs a lightweight background daemon that listens for `⌃⌥⌘\` globally. The daemon starts automatically at login.
+Run it again after pulling changes; it replaces the previous install in place.
 
 ### Enable lid-close sleep prevention (optional, one-time)
 
 ```bash
-blackout --setup-lid
+blackout setup-lid
 ```
 
 macOS puts the Mac to sleep when the lid closes, even with `caffeinate` running — only `sudo pmset -a disablesleep` can override it, and that needs root. This one-time setup asks for your password and writes `/etc/sudoers.d/blackout`, allowing exactly two commands to run without a password:
@@ -63,167 +51,175 @@ pmset -a disablesleep 1
 pmset -a disablesleep 0
 ```
 
-Nothing else is granted. After setup, every blackout activation disables lid-close sleep and every deactivation restores it — including via the hotkey. Without setup, blackout still works and simply reports `Lid sleep: unavailable`.
+Nothing else is granted. After setup, every blackout session disables lid-close sleep and restores it when it ends. Without setup, blackout still works; the menu and `blackout status` say the lid setup is missing.
 
-> **Warning:** while blackout is active, closing the lid keeps the Mac fully awake — including in a backpack. Watch for heat and battery drain, and toggle blackout off before packing it away.
+> **Warning:** while blackout is active, closing the lid keeps the Mac fully awake — including in a backpack. Watch for heat and battery drain, and turn blackout off before packing it away.
 
-## Usage
+## The menu bar icon
 
-```bash
-# Toggle blackout on/off
-blackout
+An open ring means blackout is off; a solid disc with an arc of light (an eclipse) means it is on. Click it for the menu:
+
+```
+Blackout is on · since 14:36
+Turn Off                                  ⌃⌥⌘\
+──────────────────────────────────────────
+This session
+  Built-in display dimmed (was 62%)
+  External display left on
+  Audio left on (external display connected)
+  Awake with the lid closed
+  Won't lock while the external display is on
+──────────────────────────────────────────
+Settings (apply the next time Blackout turns on)
+  Mute audio                              ▸
+✓ Keep awake with the lid closed
+✓ Lock when the lid closes
+  Dim the external display too
+✓ Show notifications
+──────────────────────────────────────────
+Open Log
+Quit Blackout
 ```
 
-Run the same command to toggle on/off.
+- **This session** says what blackout did when it turned on, and why. The lid-lock line follows the displays connected right now, because that decision is made at the moment the lid closes.
+- **Settings** are saved and apply the next time blackout turns on. They are the same settings `blackout config` shows.
+- A warning line appears when a setting is on but cannot work (for example the lid setup has not been run).
+- **Quit Blackout** also stops the hotkey until the next login.
 
-### Options
+## Settings
 
-| Flag | Description |
-|------|-------------|
-| `-e`, `--dim-external` | Also dim external monitors (left untouched by default) |
-| `-m`, `--no-mute` | Skip muting audio |
-| `-l`, `--no-lid` | Skip disabling lid-close sleep |
-| `-k`, `--no-lock` | Skip locking the screen when the lid closes |
-| `-h`, `--help` | Show help message |
+| Setting | `blackout config` key | Values | Default |
+|---------|----------------------|--------|---------|
+| Mute audio | `mute` | `auto` (only without an external display), `always`, `never` | `auto` |
+| Dim the external display too | `dim-external` | `on`, `off` | `off` |
+| Keep awake with the lid closed | `lid` | `on`, `off` | `on` |
+| Lock when the lid closes | `lock` | `on`, `off` | `on` |
+| Show notifications | `notifications` | `on`, `off` | `on` |
 
-### Daemon commands
+Change them in the menu, or from a terminal:
+
+```bash
+blackout config                 # show the settings
+blackout config mute never      # change one
+```
+
+They live in `~/.blackout/config.json`. A setting changed while blackout is on takes effect the next time it turns on.
+
+## Command line
+
+```bash
+blackout            # toggle
+blackout on         # turn on (does nothing if already on)
+blackout off        # turn off (does nothing if already off)
+blackout status     # what is on, the settings, the setup
+```
 
 | Command | Description |
 |---------|-------------|
-| `--install` | Install hotkey daemon (runs at login) |
-| `--uninstall` | Remove hotkey daemon |
-| `--status` | Show daemon status and recent logs |
-| `--setup-lid` | One-time setup for lid-close sleep prevention |
+| `blackout`, `blackout toggle` | Toggle blackout |
+| `blackout on` / `blackout off` | Turn it on or off explicitly; safe to repeat, so good for scripts |
+| `blackout status` | Session details, settings, setup checks, menu bar app status and recent log |
+| `blackout config [<key> <value>]` | Show the saved settings, or change one |
+| `blackout setup-lid` | One-time setup for lid-close sleep prevention |
+| `blackout install` / `blackout uninstall` | Register or remove the menu bar app (use `make install`) |
+| `blackout help` | Show help |
 
-### What happens when enabled
+Options override the saved settings for one run:
+
+| Option | Description |
+|--------|-------------|
+| `-e`, `--dim-external` / `--no-dim-external` | Dim external monitors too, or leave them on |
+| `--mute` / `-m`, `--no-mute` | Mute audio, or leave it on |
+| `--lid` / `-l`, `--no-lid` | Keep awake with the lid closed, or not |
+| `--lock` / `-k`, `--no-lock` | Lock the screen when the lid closes, or not |
+
+An argument blackout does not recognize is an error; it never falls through to a toggle. The older spellings `--install`, `--uninstall`, `--status` and `--setup-lid` still work.
+
+### What happens when blackout turns on
 
 1. Your current brightness and volume are saved
-2. Screen dims to 0%
-3. External monitors stay untouched — they remain your working screen (dim them too with `--dim-external`, requires m1ddc)
-4. Audio is muted (skipped if external monitor detected)
+2. The built-in display dims to 0%
+3. External monitors stay untouched — they remain your working screen (unless "Dim the external display too" is on; requires m1ddc)
+4. Audio is muted (left on when an external monitor is in use, unless set to always or never)
 5. `caffeinate` prevents idle sleep
-6. Lid-close sleep is disabled (if `--setup-lid` was run; skipped if sleep was already disabled system-wide)
+6. Lid-close sleep is disabled (if `blackout setup-lid` was run; left alone if sleep was already disabled system-wide)
 7. Closing the lid locks the screen immediately — the Mac keeps running, but nobody can open the lid into your session. The decision is made at the moment you close the lid: if an external display is connected and left undimmed, the lock is skipped so docked use keeps working (and the internal screen is re-dimmed when the lid reopens); otherwise it locks, even if the external was unplugged mid-session. Opening the lid onto a lock screen restores brightness so it is readable, and unlocking ends blackout entirely — always, regardless of connected displays.
-8. Notification confirms activation
+8. A notification confirms it (unless notifications are off)
 
-### What happens when disabled
+A monitor counts as "in use" when macOS lists it and m1ddc can read it. One that is switched off, or a virtual display, is treated as absent, so audio is muted rather than left playing on a dark machine.
+
+### What happens when it turns off
 
 1. Original brightness is restored
 2. External monitor brightness is restored (if it was dimmed)
 3. Audio is unmuted and volume restored (if it was muted)
 4. Sleep prevention is removed, lid-close sleep re-enabled, and the lid watcher stopped
-5. Notification confirms deactivation
-
-## Keyboard Shortcut
-
-### Native daemon (recommended)
-
-```bash
-blackout --install
-```
-
-Press **`⌃⌥⌘\`** (Control + Option + Command + Backslash) to toggle blackout from anywhere.
-
-The daemon runs silently in the background (~5MB RAM, 0% CPU when idle) and starts automatically at login.
-
-To check status or troubleshoot:
-
-```bash
-blackout --status
-```
-
-### Alternative: macOS Shortcuts app
-
-If you prefer not to use the daemon:
-
-1. Open **Shortcuts** app
-2. Create new shortcut → Add **Run Shell Script**
-3. Enter: `~/bin/blackout`
-4. Add keyboard shortcut via shortcut settings
 
 ## How It Works
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        blackout                              │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  CLI Mode                      Daemon Mode                   │
-│  ─────────                     ───────────                   │
-│  $ blackout                    ⌃⌥⌘\ hotkey                   │
-│       │                             │                        │
-│       └──────────┬──────────────────┘                        │
-│                  ▼                                           │
-│         Toggle based on                                      │
-│         ~/.blackout.state                                    │
-│                  │                                           │
-│     ┌────────────┴────────────┐                              │
-│     ▼                         ▼                              │
-│  OFF → Enable:             ON → Disable:                     │
-│  • Save brightness,        • Restore all                     │
-│    volume & ext display      saved settings                  │
-│  • Start caffeinate -d     • Kill caffeinate                 │
-│  • Disable lid sleep**     • Re-enable lid sleep             │
-│  • Dim built-in to 0%                                        │
-│  • Dim external with -e                                      │
-│  • Mute audio*                                               │
-│                                                              │
-│  *Audio auto-skipped when external monitor detected          │
-│  **After one-time 'blackout --setup-lid'                     │
-└──────────────────────────────────────────────────────────────┘
+   ⌃⌥⌘\ hotkey        menu bar icon         $ blackout
+        │                    │                    │
+        └────────┬───────────┘                    │
+                 ▼                                │
+      Blackout.app (blackout-menu)                │
+      starts at login, runs the CLI ──────────────┤
+                                                  ▼
+                                     blackout CLI  →  BlackoutCore
+                                                  │
+                    ┌─────────────────────────────┴──────────────┐
+                    ▼                                            ▼
+         OFF → turn on:                               ON → turn off:
+         • read ~/.blackout/config.json               • restore everything
+         • save brightness and volume                   named in the state file
+           to ~/.blackout.state                       • stop caffeinate and
+         • start caffeinate -d                          the lid watcher
+         • disable lid sleep*                         • re-enable lid sleep
+         • start the lid watcher
+         • dim, mute
+
+         *after one-time 'blackout setup-lid'
 ```
+
+The menu bar app holds no state of its own: the icon and the menu are drawn from the state and settings files, so they always agree with what the hotkey, the command or the lid watcher did. Only one start or stop runs at a time; a second one fired at the same moment waits and then finds nothing left to do.
 
 ## File Locations
 
 | File | Purpose |
 |------|---------|
-| `~/.blackout.state` | Stores session state (brightness, volume, PID) |
-| `~/.blackout/` | Daemon directory |
-| `~/.blackout/blackout-daemon` | Daemon binary |
-| `~/.blackout/daemon.log` | Daemon log file |
-| `~/.blackout/daemon.pid` | Daemon process ID |
-| `~/Library/LaunchAgents/com.blackout.daemon.plist` | LaunchAgent for auto-start |
-| `/etc/sudoers.d/blackout` | Passwordless rule for `pmset disablesleep` (from `--setup-lid`) |
+| `~/Applications/Blackout.app` | The menu bar app and the `blackout` command |
+| `~/bin/blackout` | Symlink to the command inside the app |
+| `~/.blackout/config.json` | Saved settings |
+| `~/.blackout.state` | The running session: what to restore, and what it did |
+| `~/.blackout/daemon.log` | Menu bar app log, including how long each toggle took |
+| `~/.blackout/daemon.pid` | Menu bar app process ID |
+| `~/.blackout/lock` | Held while a session starts or ends |
+| `~/Library/LaunchAgents/com.blackout.daemon.plist` | LaunchAgent that starts the app at login |
+| `/etc/sudoers.d/blackout` | Passwordless rule for `pmset disablesleep` (from `blackout setup-lid`) |
 
 ## Troubleshooting
 
-### Hotkey not working
+### The icon is missing or the hotkey does not work
 
-1. Check if daemon is running:
+1. Check the app:
    ```bash
-   blackout --status
+   blackout status
    ```
 
-2. If not running, try reinstalling:
+2. If it is not running, reinstall from the repository:
    ```bash
-   blackout --uninstall
-   blackout --install
+   make install
    ```
 
-3. Grant accessibility permissions if prompted (System Settings → Privacy & Security → Accessibility)
+3. On macOS 26 and later, check System Settings → Menu Bar: the Blackout item can be hidden there.
 
-### Daemon not starting at login
-
-1. Check LaunchAgent is installed:
-   ```bash
-   ls ~/Library/LaunchAgents/com.blackout.daemon.plist
-   ```
-
-2. Check system logs:
-   ```bash
-   cat ~/.blackout/daemon.log
-   ```
-
-3. Manually load the daemon:
-   ```bash
-   launchctl load ~/Library/LaunchAgents/com.blackout.daemon.plist
-   ```
+4. Look at the log: `~/.blackout/daemon.log` (also under **Open Log** in the menu).
 
 ### External monitor not dimming
 
 By default a connected monitor is deliberately left on — it's assumed to be
-your working screen (e.g. lid closed on a dock). Pass `--dim-external` to
-dim it too. If that still does nothing:
+your working screen (e.g. lid closed on a dock). Turn on "Dim the external
+display too" (or pass `--dim-external`) to dim it. If that still does nothing:
 
 1. Install m1ddc:
    ```bash
@@ -260,19 +256,20 @@ pmset -g | grep SleepDisabled   # 1 = sleep disabled
 sudo pmset -a disablesleep 0
 ```
 
-### Lid sleep shows "unavailable"
+### The menu says the lid setup is missing
 
 Run the one-time setup:
 
 ```bash
-blackout --setup-lid
+blackout setup-lid
 ```
 
 ### A second `blackout` process is running
 
 That is the lid watcher (`blackout --lid-watch`). It exists only while blackout
-is active and exits when you toggle blackout off — or when you unlock after a
-lid close, which ends the session. Disable it with `--no-lock`.
+is active and exits when you turn blackout off — or when you unlock after a
+lid close, which ends the session. Turn it off with the "Lock when the lid
+closes" setting.
 
 ### The lock screen is black after opening the lid
 
@@ -284,10 +281,12 @@ a macOS change.
 ### Closing the lid does not lock the screen
 
 If an external display was connected and left undimmed at that moment, the skip
-is deliberate — the external is treated as your working screen, and `blackout
--e` locks instead. Otherwise check the status line printed when blackout
-started: `unavailable` means macOS no longer exposes `SACLockScreenImmediate`,
-and locking would need another mechanism.
+is deliberate — the external is treated as your working screen (the menu says
+"Won't lock while the external display is on"), and `blackout -e` locks
+instead. Otherwise look at "This session" in the menu or `blackout status`:
+"Cannot lock when the lid closes (macOS lock call missing)" means macOS no
+longer exposes `SACLockScreenImmediate`, and locking would need another
+mechanism.
 
 ### Locking manually leaves the screen dark
 
@@ -299,7 +298,7 @@ screen, or unlock by Touch ID; unlocking ends blackout either way.
 ## Limitations
 
 Cannot prevent sleep from:
-- Closing laptop lid *before* `--setup-lid` has been run
+- Closing laptop lid *before* `blackout setup-lid` has been run
 - Apple menu → Sleep (greyed out while lid sleep is disabled)
 - Low battery
 - Thermal emergency
@@ -307,46 +306,30 @@ Cannot prevent sleep from:
 ## Development
 
 ```bash
-swift build                 # debug build
-swift run blackout-tests    # run the test suite
-swift build -c release      # release build
+make test       # run the test suite (swift run blackout-tests)
+make bundle     # build .build/Blackout.app without installing it
+make install    # build and install
+make icon       # redraw the app icon after changing scripts/make-icon.swift
 ```
 
-Code is organized as a `BlackoutCore` library (all logic), with thin
-`blackout` and `blackout-daemon` executables on top. Tests use
-[Swift Testing](https://developer.apple.com/documentation/testing) via the
+Code is organized as a `BlackoutCore` library holding all the logic, with two
+thin executables on top: `blackout` (the CLI) and `blackout-menu` (the menu
+bar app). Session logic talks to the Mac through one protocol,
+`SystemControls`, so the tests run it against a recording fake instead of a
+real display, speaker and lid.
+
+Tests use [Swift Testing](https://developer.apple.com/documentation/testing) via the
 dedicated `blackout-tests` runner, because `swift test` cannot execute Swift
 Testing bundles with Command Line Tools alone (no full Xcode required this way).
 
 ## Uninstall
 
-Run the uninstall script:
-
 ```bash
-./uninstall.sh
+blackout uninstall    # removes the app, the command and the LaunchAgent; keeps your settings
+./uninstall.sh        # removes everything, including settings and the sudo rule
 ```
 
-Or manually:
-
-```bash
-# 1. Stop daemon and remove LaunchAgent
-launchctl unload ~/Library/LaunchAgents/com.blackout.daemon.plist 2>/dev/null
-rm -f ~/Library/LaunchAgents/com.blackout.daemon.plist
-
-# 2. Remove daemon files
-rm -rf ~/.blackout
-
-# 3. Stop any active blackout session
-pkill -f "caffeinate -d"
-
-# 4. Re-enable sleep and remove the sudoers rule (if --setup-lid was used)
-sudo pmset -a disablesleep 0
-sudo rm -f /etc/sudoers.d/blackout
-
-# 5. Remove binary and state
-rm -f ~/bin/blackout
-rm -f ~/.blackout.state
-```
+Both turn blackout off first if it is on.
 
 ## License
 
