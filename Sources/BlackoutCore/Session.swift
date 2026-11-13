@@ -22,6 +22,9 @@ public struct Session {
         case alreadyOn
         /// Another blackout command held the lock past the timeout
         case busy
+        /// The session was ended by another command while this one was
+        /// still starting it
+        case cancelled
         case failed(String)
     }
 
@@ -91,13 +94,21 @@ public struct Session {
             return .failed("Failed to save state — blackout not enabled")
         }
 
+        // Turning off never waits on the lock for more than its timeout, so
+        // if a step below hangs, an `off` can run underneath us and restore
+        // everything. Carrying on would then dim and mute with no session
+        // and no restore data, so each remaining step first checks that the
+        // session is still there.
         system.setBrightness(0.0)
         if externalLuminance != nil {
+            guard StateManager.hasState() else { return .cancelled }
             system.setExternalLuminance(0)
         }
         if plan.muteAudio {
+            guard StateManager.hasState() else { return .cancelled }
             system.setMuted(true)
         }
+        guard StateManager.hasState() else { return .cancelled }
         if settings.notifications {
             system.notify(.enabled)
         }

@@ -25,35 +25,19 @@ public enum AppInstaller {
         let destination = PathManager.appBundle
 
         // Stop the running app first (also the pre-2.0 hotkey daemon: same label)
-        if fm.fileExists(atPath: PathManager.launchAgentPlist.path) {
+        let hadAgent = fm.fileExists(atPath: PathManager.launchAgentPlist.path)
+        if hadAgent {
             Shell.run("/bin/launchctl", ["unload", PathManager.launchAgentPlist.path])
         }
 
         do {
             if source.standardizedFileURL != destination.standardizedFileURL {
-                try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-                // Remove, then copy — never write through the old files. A
-                // session's lid watcher may be running from them, and macOS
-                // kills a signed binary whose file changes underneath it;
-                // removing only unlinks, so the watcher keeps running.
-                if fm.fileExists(atPath: destination.path) {
-                    try fm.removeItem(at: destination)
-                }
-                try fm.copyItem(at: source, to: destination)
+                try placeBundle(from: source, to: destination)
                 print("  Installed \(destination.path)")
             }
 
-            try fm.createDirectory(at: PathManager.cliLink.deletingLastPathComponent(), withIntermediateDirectories: true)
-            // attributesOfItem does not follow links, so this also sees a
-            // dangling symlink, which fileExists would report as absent
-            if (try? fm.attributesOfItem(atPath: PathManager.cliLink.path)) != nil {
-                try fm.removeItem(at: PathManager.cliLink)
-            }
-            try fm.createSymbolicLink(at: PathManager.cliLink, withDestinationURL: PathManager.installedCLI)
+            try replaceLink(at: PathManager.cliLink, pointingTo: PathManager.installedCLI)
             print("  Linked \(PathManager.cliLink.path)")
-
-            // The pre-2.0 daemon binary; the app bundle replaces it
-            try? fm.removeItem(at: PathManager.legacyDaemonBinary)
 
             try PathManager.ensureBlackoutDirectoryExists()
             try PathManager.ensureLaunchAgentsDirectoryExists()
@@ -61,8 +45,18 @@ public enum AppInstaller {
                 programPath: PathManager.installedMenuApp.path,
                 logPath: PathManager.daemonLog.path)
             try plist.write(to: PathManager.launchAgentPlist, atomically: true, encoding: .utf8)
+
+            // The pre-2.0 daemon binary. Last, once nothing can fail any
+            // more: until here the old LaunchAgent still needs it.
+            try? fm.removeItem(at: PathManager.legacyDaemonBinary)
         } catch {
             print("Error: \(error.localizedDescription)")
+            // Whatever was installed before is still in place; bring its
+            // hotkey back rather than leave the user without one
+            if hadAgent {
+                Shell.run("/bin/launchctl", ["load", PathManager.launchAgentPlist.path])
+                print("The previous install was left as it was and restarted.")
+            }
             exit(1)
         }
 
@@ -165,6 +159,49 @@ public enum AppInstaller {
     }
 
     // MARK: - Helpers
+
+    /// Put a copy of `source` at `destination`, replacing what is there.
+    /// The copy — the step that can fail — goes to a temporary name first,
+    /// so a failure leaves the existing install untouched. The old bundle is
+    /// then removed, never written through: a session's lid watcher may be
+    /// running from it, and macOS kills a signed binary whose file changes
+    /// underneath it, while removing only unlinks.
+    public static func placeBundle(from source: URL, to destination: URL) throws {
+        let fm = FileManager.default
+        let folder = destination.deletingLastPathComponent()
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let staged = folder.appendingPathComponent(destination.lastPathComponent + ".new")
+        // Left behind by an install that was interrupted
+        try? fm.removeItem(at: staged)
+        try fm.copyItem(at: source, to: staged)
+
+        if fm.fileExists(atPath: destination.path) {
+            try fm.removeItem(at: destination)
+        }
+        try fm.moveItem(at: staged, to: destination)
+    }
+
+    /// Make `link` a symlink to `target`, replacing a file or link already
+    /// there. Created under a temporary name and renamed into place, which
+    /// is atomic: the command never stops existing, even mid-upgrade.
+    public static func replaceLink(at link: URL, pointingTo target: URL) throws {
+        let fm = FileManager.default
+        let folder = link.deletingLastPathComponent()
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let staged = folder.appendingPathComponent(".\(link.lastPathComponent).new")
+        try? fm.removeItem(at: staged)
+        try fm.createSymbolicLink(atPath: staged.path, withDestinationPath: target.path)
+
+        guard rename(staged.path, link.path) == 0 else {
+            let code = errno
+            try? fm.removeItem(at: staged)
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [
+                NSLocalizedDescriptionKey: "Could not link \(link.path): \(String(cString: strerror(code)))"
+            ])
+        }
+    }
 
     /// The .app an executable lives in, or nil if it is not at
     /// <Name>.app/Contents/MacOS/<executable>. Pass a path with symlinks

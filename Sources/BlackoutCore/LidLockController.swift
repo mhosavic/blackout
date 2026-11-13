@@ -78,7 +78,7 @@ public struct LidLockController {
     // MARK: - Watcher process
 
     /// Spawn the detached watcher that reacts to the lid and the unlock.
-    /// stdio goes to /dev/null: the hotkey daemon reads blackout's stdout to
+    /// stdio goes to /dev/null: the menu bar app reads blackout's stdout to
     /// EOF, so a surviving child holding that pipe would deadlock it for the
     /// whole session — the same trap already fixed for caffeinate.
     public static func startWatcher() -> pid_t? {

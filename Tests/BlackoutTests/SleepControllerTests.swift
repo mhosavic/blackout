@@ -70,19 +70,23 @@ struct SleepControllerTests {
         #expect(process.terminationStatus == 0, "visudo rejected the generated sudoers rule")
     }
 
-    // MARK: - Process liveness
+    // MARK: - Process identity
 
-    @Test func isProcessRunningForCurrentProcess() {
-        #expect(SleepController.isProcessRunning(pid: ProcessInfo.processInfo.processIdentifier))
-    }
-
-    @Test func isProcessRunningForExitedProcess() throws {
+    /// These two checks are what decides whether a saved PID is signalled.
+    /// The watcher is the CLI re-executed, so its name is "blackout".
+    @Test func liveSystemRecognizesACaffeinateAndNothingElse() throws {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
+        process.arguments = ["-t", "20"]
         try process.run()
-        process.waitUntilExit()
+        defer { process.terminate() }
+        let system = LiveSystem()
 
-        #expect(!SleepController.isProcessRunning(pid: process.processIdentifier))
+        #expect(system.isCaffeinateRunning(pid: process.processIdentifier))
+        #expect(!system.isWatcherRunning(pid: process.processIdentifier))
+        // This test runner is alive, and is neither
+        #expect(!system.isCaffeinateRunning(pid: system.ownPID))
+        #expect(!system.isWatcherRunning(pid: system.ownPID))
     }
 
     @Test func processNameOfCurrentProcess() {

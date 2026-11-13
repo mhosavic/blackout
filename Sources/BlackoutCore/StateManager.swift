@@ -88,7 +88,9 @@ public struct StateManager {
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(state)
-            try data.write(to: stateFileURL)
+            // Atomic: a crash or power cut mid-write must not leave a torn
+            // file, which would read as corrupt and cost the restore data
+            try data.write(to: stateFileURL, options: .atomic)
             ChangeNotifier.post()
             return true
         } catch {

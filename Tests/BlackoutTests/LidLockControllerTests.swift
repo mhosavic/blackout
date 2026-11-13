@@ -63,12 +63,12 @@ struct LidLockControllerTests {
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["30"]
         try process.run()
-        #expect(SleepController.isProcessRunning(pid: process.processIdentifier))
+        #expect(process.isRunning)
 
         LidLockController.stopWatcher(pid: process.processIdentifier)
         process.waitUntilExit()
 
-        #expect(!SleepController.isProcessRunning(pid: process.processIdentifier))
+        #expect(!process.isRunning)
     }
 
     // MARK: - Environment

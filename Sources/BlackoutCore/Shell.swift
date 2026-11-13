@@ -8,14 +8,19 @@ enum Shell {
     /// would otherwise hold a toggle — and the session lock — indefinitely.
     static let timeout: TimeInterval = 10
 
-    /// Terminate `process` if it is still running after `timeout`. Cancel
-    /// the returned item once the process has exited.
-    private static func killAfterTimeout(_ process: Process) -> DispatchWorkItem {
-        let kill = DispatchWorkItem {
-            if process.isRunning { process.terminate() }
+    /// Stop `process` if it is still running after `timeout`: SIGTERM, then
+    /// SIGKILL a second later for a child that ignores it (one stuck in a
+    /// device call does). Cancel the returned item once the process has exited.
+    private static func stopAfterTimeout(_ process: Process) -> DispatchWorkItem {
+        let stop = DispatchWorkItem {
+            guard process.isRunning else { return }
+            process.terminate()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: kill)
-        return kill
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: stop)
+        return stop
     }
 
     /// Start a command and do not wait for it. stdio goes to /dev/null: the
@@ -43,9 +48,9 @@ enum Shell {
 
         do {
             try process.run()
-            let kill = killAfterTimeout(process)
+            let stop = stopAfterTimeout(process)
             process.waitUntilExit()
-            kill.cancel()
+            stop.cancel()
             return process.terminationStatus
         } catch {
             return nil
@@ -65,11 +70,11 @@ enum Shell {
 
         do {
             try process.run()
-            let kill = killAfterTimeout(process)
+            let stop = stopAfterTimeout(process)
             // Drain the pipe before waiting so large output can't deadlock
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
-            kill.cancel()
+            stop.cancel()
             guard process.terminationStatus == 0 else { return nil }
             return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {

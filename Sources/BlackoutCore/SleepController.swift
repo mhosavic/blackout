@@ -9,7 +9,7 @@ public struct SleepController {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
         process.arguments = ["-d"]  // Prevent display sleep
         // Detach stdio: caffeinate outlives us, and inheriting our stdout
-        // would hold open any pipe a parent (e.g. the hotkey daemon) is
+        // would hold open any pipe a parent (e.g. the menu bar app) is
         // reading to EOF, deadlocking it for the whole session
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
@@ -27,12 +27,6 @@ public struct SleepController {
     /// Kill the caffeinate process to allow sleep again
     public static func allowSleep(pid: pid_t) {
         kill(pid, SIGTERM)
-    }
-
-    /// Check if a process with given PID is still running
-    public static func isProcessRunning(pid: pid_t) -> Bool {
-        // kill with signal 0 checks if process exists without actually killing it
-        return kill(pid, 0) == 0
     }
 
     /// The name of the process with this PID, or nil if there is none. A
@@ -74,7 +68,7 @@ public struct SleepController {
     }
 
     private static func setSleepDisabled(_ value: Int) -> Bool {
-        // sudo -n fails immediately instead of prompting, so the hotkey daemon
+        // sudo -n fails immediately instead of prompting, so the menu bar app
         // (no TTY) degrades gracefully when the sudoers rule is missing
         return Shell.run("/usr/bin/sudo", ["-n", "/usr/bin/pmset", "-a", "disablesleep", "\(value)"]) == 0
     }

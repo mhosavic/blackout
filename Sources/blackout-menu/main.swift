@@ -54,11 +54,19 @@ Logger.info("PID: \(ProcessInfo.processInfo.processIdentifier)")
 // would wrongly keep the app down for the whole login session.
 if let bundleID = Bundle.main.bundleIdentifier {
     let ownPID = ProcessInfo.processInfo.processIdentifier
-    let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        .filter { $0.processIdentifier != ownPID }
-    if !others.isEmpty {
-        Logger.info("Already running (PID \(others[0].processIdentifier)), exiting")
-        exit(0)
+    func otherInstances() -> [NSRunningApplication] {
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .filter { $0.processIdentifier != ownPID && !$0.isTerminated }
+    }
+    // On a reinstall the instance just stopped can linger in the list for a
+    // moment. Exiting 0 over it would be final — launchd does not restart a
+    // clean exit — so look twice before believing it.
+    if !otherInstances().isEmpty {
+        Thread.sleep(forTimeInterval: 1)
+        if let other = otherInstances().first {
+            Logger.info("Already running (PID \(other.processIdentifier)), exiting")
+            exit(0)
+        }
     }
 }
 

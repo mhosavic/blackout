@@ -236,6 +236,26 @@ extension FileBackedTests {
         #expect(system.events.contains("setBrightness 0.62"))
     }
 
+    /// A hung step can keep enable going past the point where `off` stops
+    /// waiting for the lock and restores everything. Enable must then stop,
+    /// not carry on dimming and muting a session that no longer exists and
+    /// has no restore data.
+    @Test func enableStopsIfTheSessionWasEndedUnderneathIt() {
+        system.externalOnline = true
+        system.externalLuminanceValue = 80
+        system.onSetBrightness = { StateManager.clearState() }
+
+        let result = session.enable(settings: settings { $0.dimExternal = true; $0.muteAudio = .always })
+
+        guard case .cancelled = result else {
+            Issue.record("enable should report cancelled, got \(result)")
+            return
+        }
+        #expect(!system.events.contains { $0.hasPrefix("setExternalLuminance") })
+        #expect(!system.events.contains { $0.hasPrefix("setMuted") })
+        #expect(!system.events.contains { $0.hasPrefix("notify") })
+    }
+
     @Test func enableFailsWithoutCaffeinate() {
         system.caffeinatePID = nil
 

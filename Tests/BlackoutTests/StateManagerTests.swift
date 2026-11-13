@@ -34,6 +34,21 @@ extension FileBackedTests {
         #expect(state?.lidWatcherPID == 54321)
     }
 
+    /// Written to a temporary file and renamed into place, so a crash or
+    /// power cut mid-write cannot leave a torn file — which would read as
+    /// corrupt and cost the restore data
+    @Test func saveLeavesNoPartialFileBehind() throws {
+        #expect(StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false, lidWatcherPID: nil))
+        let inode = try FileManager.default.attributesOfItem(atPath: StateManager.stateFileURL.path)[.systemFileNumber] as? Int
+
+        #expect(StateManager.saveState(brightness: 0.6, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false, lidWatcherPID: nil))
+        let newInode = try FileManager.default.attributesOfItem(atPath: StateManager.stateFileURL.path)[.systemFileNumber] as? Int
+
+        // A rename replaces the file; writing in place would keep the inode
+        #expect(inode != nil && inode != newInode)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: tempDir.path) == ["state.json"])
+    }
+
     @Test func summaryRoundTrips() {
         let summary = SessionSummary(audio: .leftOnExternalDisplay, external: .leftOn, lidSleep: .disabled, lidLock: .armed)
         #expect(StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: true, lidWatcherPID: 2, summary: summary))

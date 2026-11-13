@@ -15,7 +15,7 @@ public struct ExternalDisplayController {
     }
 
     /// Full path to m1ddc, resolved once per run. Homebrew locations are
-    /// checked explicitly because the hotkey daemon runs under launchd,
+    /// checked explicitly because the menu bar app runs under launchd,
     /// whose PATH does not include them.
     private static let m1ddcPath: String? = {
         let candidates = ["/opt/homebrew/bin/m1ddc", "/usr/local/bin/m1ddc"]

@@ -62,6 +62,9 @@ func turnOn(_ overrides: Overrides) {
     case .busy:
         printStandardError("Another blackout command is still running — try again in a moment")
         exit(1)
+    case .cancelled:
+        printStandardError("Blackout was turned off while it was still turning on")
+        exit(1)
     case .failed(let message):
         printStandardError(message)
         exit(1)

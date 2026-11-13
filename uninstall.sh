@@ -5,9 +5,15 @@ echo "Uninstalling blackout..."
 
 # Restore settings first if a session is active (turns blackout off,
 # bringing back brightness, volume, and normal sleep)
-if [ -f ~/.blackout.state ] && command -v blackout >/dev/null 2>&1; then
+# `blackout` is often not on the PATH of the shell running this (make
+# uninstall), so fall back to the copy inside the app
+BLACKOUT=$(command -v blackout || true)
+if [ -z "$BLACKOUT" ] && [ -x ~/Applications/Blackout.app/Contents/MacOS/blackout ]; then
+    BLACKOUT=~/Applications/Blackout.app/Contents/MacOS/blackout
+fi
+if [ -f ~/.blackout.state ] && [ -n "$BLACKOUT" ]; then
     echo "Restoring active blackout session..."
-    blackout off || true
+    "$BLACKOUT" off || true
 fi
 
 # Fallback: stop any caffeinate instance the toggle did not clean up

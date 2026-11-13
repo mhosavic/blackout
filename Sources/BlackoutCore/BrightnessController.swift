@@ -62,9 +62,4 @@ public struct BrightnessController {
         let clampedValue = Float(min(max(value, 0.0), 1.0))
         _ = functions?.set(targetDisplay(), clampedValue)
     }
-
-    /// Dim the screen completely
-    public static func dimScreen() {
-        setBrightness(0.0)
-    }
 }

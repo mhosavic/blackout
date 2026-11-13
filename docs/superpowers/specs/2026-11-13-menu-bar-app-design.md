@@ -424,3 +424,29 @@ items; all are folded in above. The calls that were not simply "accept":
 - One more fix found while building: `disable` signals the saved PIDs only if
   they are still a `caffeinate` and a `blackout` process. After a reboot the
   numbers can belong to anything.
+
+## Code review rulings (2026-11-13)
+
+A whole-branch review found no blockers, two should-fix items and six minor
+ones; all are fixed:
+
+- `install` copies to a temporary name and swaps, renames the symlink into
+  place, and restarts the previous install if any step fails.
+- `enable` stops (`cancelled`) if the session disappears underneath it,
+  instead of dimming and muting a session an unlocked `off` already restored.
+- The state file is written atomically.
+- A timed-out command gets SIGKILL one second after SIGTERM.
+- The single-instance check ignores a terminated instance and looks twice.
+- `uninstall.sh` finds the command inside the app when it is not on the PATH.
+- Dead code removed (`dimScreen`, `isProcessRunning`); stale "hotkey daemon"
+  comments updated.
+
+Left as is, knowingly:
+
+- The menu bar app's `Toggler` (in-flight and 60 s patience) has no unit
+  test: it lives in the executable target, which the test runner cannot
+  import. It is exercised end to end on install.
+- `StateManager.saveState(...)` is now used only by tests; it predates this
+  branch and the tests read better with it.
+- A volume read that times out still falls back to 50 %, as an unreadable
+  volume always did.
