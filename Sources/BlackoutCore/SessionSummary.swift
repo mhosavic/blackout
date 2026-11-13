@@ -7,6 +7,9 @@ public struct SessionSummary: Codable, Equatable {
 
     public enum Audio: String, Codable {
         case muted
+        /// The user had muted audio themselves before the session started,
+        /// so it is theirs: neither muted nor un-muted by blackout
+        case alreadyMuted
         case leftOnBySetting
         case leftOnExternalDisplay
     }

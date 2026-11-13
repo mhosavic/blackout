@@ -18,7 +18,7 @@ public protocol SystemControls {
     func externalLuminance() -> Int?
     func setExternalLuminance(_ level: Int)
 
-    func volume() -> Int
+    func outputAudio() -> OutputAudio
     func setVolume(_ level: Int)
     func setMuted(_ muted: Bool)
 
@@ -54,7 +54,7 @@ public struct LiveSystem: SystemControls {
     public func externalLuminance() -> Int? { ExternalDisplayController.getLuminance() }
     public func setExternalLuminance(_ level: Int) { ExternalDisplayController.setLuminance(level) }
 
-    public func volume() -> Int { AudioController.getVolume() }
+    public func outputAudio() -> OutputAudio { AudioController.getOutput() }
     public func setVolume(_ level: Int) { AudioController.setVolume(level) }
     public func setMuted(_ muted: Bool) {
         if muted { AudioController.mute() } else { AudioController.unmute() }

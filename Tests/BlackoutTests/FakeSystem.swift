@@ -13,6 +13,8 @@ final class FakeSystem: SystemControls {
     var externalOnline = false
     var externalLuminanceValue: Int?
     var volumeValue = 35
+    /// Whether the user had already muted audio themselves
+    var mutedValue = false
     var caffeinatePID: pid_t? = 1001
     var watcherPID: pid_t? = 2002
     var runningCaffeinates: Set<pid_t> = [1001]
@@ -41,7 +43,7 @@ final class FakeSystem: SystemControls {
     }
     func setExternalLuminance(_ level: Int) { events.append("setExternalLuminance \(level)") }
 
-    func volume() -> Int { volumeValue }
+    func outputAudio() -> OutputAudio { OutputAudio(volume: volumeValue, muted: mutedValue) }
     func setVolume(_ level: Int) { events.append("setVolume \(level)") }
     func setMuted(_ muted: Bool) { events.append("setMuted \(muted)") }
 

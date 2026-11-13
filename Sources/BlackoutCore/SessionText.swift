@@ -40,6 +40,7 @@ public enum SessionText {
 
         switch summary.audio {
         case .muted: lines.append(audioMutedLine(state))
+        case .alreadyMuted: lines.append("Audio was already muted (left as it was)")
         case .leftOnBySetting: lines.append("Audio left on (setting)")
         case .leftOnExternalDisplay: lines.append("Audio left on (external display connected)")
         }

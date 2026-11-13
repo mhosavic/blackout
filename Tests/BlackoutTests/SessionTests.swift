@@ -77,6 +77,38 @@ extension FileBackedTests {
         #expect(state?.summary == SessionSummary(audio: .muted, external: .none, lidSleep: .disabled, lidLock: .armed))
     }
 
+    /// Reported by a colleague: he keeps his Mac muted, and turning blackout
+    /// on and off again un-muted it. A mute that was there before blackout
+    /// is the user's, not ours — the session must leave audio alone entirely.
+    @Test func aMuteSetBeforeBlackoutSurvivesTheSession() {
+        system.mutedValue = true
+
+        #expect(isEnabled(session.enable(settings: settings())))
+        let state = StateManager.loadState()
+        #expect(state?.originalVolume == nil)
+        #expect(state?.summary?.audio == .alreadyMuted)
+
+        guard case .disabled = session.disable(notify: false) else {
+            Issue.record("disable should succeed")
+            return
+        }
+        #expect(!system.events.contains { $0.hasPrefix("setMuted") })
+        #expect(!system.events.contains { $0.hasPrefix("setVolume") })
+    }
+
+    /// Same with the "always mute" setting: already muted is already muted
+    @Test func alwaysMuteAlsoLeavesAnExistingMuteAlone() {
+        system.mutedValue = true
+        system.externalOnline = true
+        system.externalLuminanceValue = 80
+
+        #expect(isEnabled(session.enable(settings: settings { $0.muteAudio = .always })))
+        _ = session.disable(notify: false)
+
+        #expect(!system.events.contains { $0.hasPrefix("setMuted") })
+        #expect(!system.events.contains { $0.hasPrefix("setVolume") })
+    }
+
     /// Nothing plugged in: m1ddc is not even asked, so a slow or hung DDC
     /// call cannot delay the common toggle
     @Test func enableSkipsTheDDCProbeWhenNothingIsPluggedIn() {

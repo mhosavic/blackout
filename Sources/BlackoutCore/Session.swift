@@ -52,7 +52,18 @@ public struct Session {
 
         // Save current brightness, volume, and external display luminance
         let brightness = system.brightness()
-        let volume = plan.muteAudio ? system.volume() : nil
+        var volume: Int?
+        if plan.muteAudio {
+            let audio = system.outputAudio()
+            if audio.muted {
+                // Muted by the user before the session: that mute is theirs.
+                // Saving a volume here would have disable un-mute it, so the
+                // session leaves audio alone in both directions.
+                summary.audio = .alreadyMuted
+            } else {
+                volume = audio.volume
+            }
+        }
         let externalLuminance = plan.dimExternal ? probe.externalLuminance : nil
 
         guard let caffeinatePID = system.startCaffeinate() else {
@@ -104,7 +115,7 @@ public struct Session {
             guard StateManager.hasState() else { return .cancelled }
             system.setExternalLuminance(0)
         }
-        if plan.muteAudio {
+        if volume != nil {
             guard StateManager.hasState() else { return .cancelled }
             system.setMuted(true)
         }

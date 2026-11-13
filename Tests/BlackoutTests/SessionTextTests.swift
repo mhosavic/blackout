@@ -56,6 +56,7 @@ struct SessionTextTests {
     }
 
     @Test func audioLines() {
+        #expect(lines(audio: .alreadyMuted).contains("Audio was already muted (left as it was)"))
         #expect(lines(audio: .leftOnBySetting).contains("Audio left on (setting)"))
         #expect(lines(audio: .leftOnExternalDisplay).contains("Audio left on (external display connected)"))
     }
