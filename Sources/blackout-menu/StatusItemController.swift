@@ -9,6 +9,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let toggler: Toggler
+    private let onChangeHotkey: () -> Void
+    /// The shortcut shown beside Turn On / Turn Off, as of the last build
+    private var shownHotkey = Hotkey.default
 
     private var shownOn: Bool?
     // Assumed fine until the first check lands, so the menu never flashes
@@ -18,8 +21,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var actions: [MenuAction] = []
     private var refreshTimer: Timer?
 
-    init(toggler: Toggler) {
+    init(toggler: Toggler, onChangeHotkey: @escaping () -> Void) {
         self.toggler = toggler
+        self.onChangeHotkey = onChangeHotkey
         super.init()
 
         menu.delegate = self
@@ -65,11 +69,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         refreshIcon()
 
+        let settings = Settings.load()
+        shownHotkey = settings.hotkey
         let model = MenuModel.build(
             state: StateManager.loadState(),
             stateFileExists: StateManager.hasState(),
             externalOnline: ExternalDisplayController.isExternalDisplayOnline(),
-            settings: Settings.load(),
+            settings: settings,
             health: health,
             now: Date()
         )
@@ -107,11 +113,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         case .action(let title, let action, let showsHotkey):
             let item = actionItem(title: title, action: action)
-            if showsHotkey {
-                // Shown for reference; the global hotkey itself is registered
-                // by HotkeyManager and works with the menu closed
-                item.keyEquivalent = "\\"
-                item.keyEquivalentModifierMask = [.control, .option, .command]
+            // Shown for reference; the global hotkey itself is registered
+            // by HotkeyManager and works with the menu closed. A menu item
+            // can only display a single character, so a named key (F5,
+            // Space) is left to the "Change Hotkey" line.
+            if showsHotkey, shownHotkey.keyLabel.count == 1 {
+                item.keyEquivalent = shownHotkey.keyLabel.lowercased()
+                var mask: NSEvent.ModifierFlags = []
+                if shownHotkey.modifiers & Hotkey.command != 0 { mask.insert(.command) }
+                if shownHotkey.modifiers & Hotkey.option != 0 { mask.insert(.option) }
+                if shownHotkey.modifiers & Hotkey.control != 0 { mask.insert(.control) }
+                if shownHotkey.modifiers & Hotkey.shift != 0 { mask.insert(.shift) }
+                item.keyEquivalentModifierMask = mask
             }
             return item
 
@@ -157,6 +170,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             } else {
                 Logger.error("Could not change setting \(key) to \(value)")
             }
+        case .changeHotkey:
+            onChangeHotkey()
         case .openLog:
             NSWorkspace.shared.open(PathManager.daemonLog)
         case .quit:

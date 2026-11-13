@@ -19,6 +19,8 @@ public struct Settings: Equatable {
     public var keepAwakeLidClosed = true
     public var lockOnLidClose = true
     public var notifications = true
+    /// The global shortcut, read by the menu bar app
+    public var hotkey = Hotkey.default
 
     public init() {}
 
@@ -51,10 +53,18 @@ public struct Settings: Equatable {
         settings.keepAwakeLidClosed = bool("keepAwakeLidClosed") ?? settings.keepAwakeLidClosed
         settings.lockOnLidClose = bool("lockOnLidClose") ?? settings.lockOnLidClose
         settings.notifications = bool("notifications") ?? settings.notifications
+
+        if let saved = json["hotkey"] as? [String: Any],
+           let keyCode = saved["keyCode"] as? Int, let modifiers = saved["modifiers"] as? Int,
+           let label = saved["label"] as? String, !label.isEmpty,
+           let keyCode = UInt32(exactly: keyCode), let modifiers = UInt32(exactly: modifiers),
+           Hotkey.problem(keyCode: keyCode, modifiers: modifiers) == nil {
+            settings.hotkey = Hotkey(keyCode: keyCode, modifiers: modifiers, keyLabel: label)
+        }
         return settings
     }
 
-    /// Save all five settings. Returns false if the file could not be written.
+    /// Save every setting. Returns false if the file could not be written.
     @discardableResult
     public func save() -> Bool {
         let json: [String: Any] = [
@@ -62,7 +72,12 @@ public struct Settings: Equatable {
             "dimExternal": dimExternal,
             "keepAwakeLidClosed": keepAwakeLidClosed,
             "lockOnLidClose": lockOnLidClose,
-            "notifications": notifications
+            "notifications": notifications,
+            "hotkey": [
+                "keyCode": Int(hotkey.keyCode),
+                "modifiers": Int(hotkey.modifiers),
+                "label": hotkey.keyLabel
+            ]
         ]
         do {
             try FileManager.default.createDirectory(

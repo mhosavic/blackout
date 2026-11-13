@@ -80,23 +80,48 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory) // No dock icon; the status item is the whole UI
 
 let toggler = Toggler()
-let statusItemController = StatusItemController(toggler: toggler)
 
-// Create hotkey manager
+// Create hotkey manager. The status item is created after it, so the
+// callback reaches it through a variable set a few lines down.
+var refreshStatusIcon: () -> Void = {}
 let hotkeyManager = HotkeyManager {
     toggler.run("toggle") {
-        statusItemController.refreshIcon()
+        refreshStatusIcon()
     }
 }
+let hotkeyRecorder = HotkeyRecorder(hotkeyManager: hotkeyManager)
+let statusItemController = StatusItemController(toggler: toggler, onChangeHotkey: {
+    hotkeyRecorder.show()
+})
+refreshStatusIcon = { statusItemController.refreshIcon() }
 
-// Register hotkey
-guard hotkeyManager.register() else {
-    Logger.error("Failed to register hotkey, exiting")
-    removePIDFile()
-    exit(1)
+// Register the saved hotkey; if macOS refuses it, the default is better
+// than no hotkey at all
+let savedHotkey = Settings.load().hotkey
+if !hotkeyManager.register(savedHotkey) {
+    guard savedHotkey != .default, hotkeyManager.register(.default) else {
+        Logger.error("Failed to register hotkey, exiting")
+        removePIDFile()
+        exit(1)
+    }
+    Logger.error("Fell back to the default hotkey \(Hotkey.default.display)")
 }
 
-Logger.info("Running, press ⌃⌥⌘\\ to toggle blackout")
+// Follow a hotkey changed outside the recorder: 'blackout hotkey default',
+// or config.json edited by hand
+ChangeNotifier.observe {
+    let wanted = Settings.load().hotkey
+    guard !hotkeyRecorder.isRecording, hotkeyManager.current != wanted else { return }
+    let previous = hotkeyManager.current
+    if !hotkeyManager.register(wanted), let previous {
+        _ = hotkeyManager.register(previous)
+    }
+}
+ChangeNotifier.observeHotkeyRecorderRequest {
+    hotkeyRecorder.show()
+}
+
+Logger.info("Running, press \(hotkeyManager.current?.display ?? "the hotkey") to toggle blackout")
 
 // Run the application event loop
 // This is required for Carbon event handlers to work

@@ -8,13 +8,13 @@ Black out your Mac screen while it keeps working. One hotkey, one menu bar icon,
 
 - **Blacks out the screen** - dims the built-in display to 0%
 - **Menu bar icon** - shows at a glance whether blackout is on; its menu shows what the current session did and holds every setting
-- **Global hotkey** - `⌃⌥⌘\` toggles from anywhere
+- **Global hotkey** - `⌃⌥⌘\` toggles from anywhere, and you can change it to any shortcut you like
 - **Saved settings** - choose what a session does once; the hotkey, the menu and the command all follow it
 - **External monitor aware** - a connected monitor stays lit as your working screen (dimming it too is a setting, requires m1ddc)
 - **Smart audio muting** - mutes audio, but leaves it on when an external monitor is in use
 - **Prevents sleep** - keeps the Mac awake, even with the lid closed (after one-time `blackout setup-lid`)
 - **Locks on lid close** - closing the lid locks the screen while everything keeps running; unlocking ends blackout
-- **Restores everything** - brightness, volume and sleep come back exactly as they were
+- **Restores everything** - brightness, volume and sleep come back exactly as they were; audio you had muted yourself stays muted
 
 ## Requirements
 
@@ -76,6 +76,7 @@ Settings (apply the next time Blackout turns on)
 ✓ Lock when the lid closes
   Dim the external display too
 ✓ Show notifications
+  Change Hotkey (⌃⌥⌘\)…
 ──────────────────────────────────────────
 Open Log
 Quit Blackout
@@ -84,6 +85,7 @@ Quit Blackout
 - **This session** says what blackout did when it turned on, and why. The lid-lock line follows the displays connected right now, because that decision is made at the moment the lid closes.
 - **Settings** are saved and apply the next time blackout turns on. They are the same settings `blackout config` shows.
 - A warning line appears when a setting is on but cannot work (for example the lid setup has not been run).
+- **Change Hotkey** opens a small window: press the shortcut you want.
 - **Quit Blackout** also stops the hotkey until the next login.
 
 ## Settings
@@ -105,6 +107,17 @@ blackout config mute never      # change one
 
 They live in `~/.blackout/config.json`. A setting changed while blackout is on takes effect the next time it turns on.
 
+### Changing the hotkey
+
+The shortcut is `⌃⌥⌘\` (Control + Option + Command + Backslash) until you change it. To pick your own, choose **Change Hotkey** in the menu, or run:
+
+```bash
+blackout hotkey            # opens the same window
+blackout hotkey default    # back to ⌃⌥⌘\
+```
+
+Press the shortcut you want in the window that opens. It needs at least one of ⌘, ⌃ or ⌥, so it cannot swallow ordinary typing. The change takes effect at once and is saved with your settings. Esc cancels, and the window closes by itself after 30 seconds, because the hotkey is switched off while it is open.
+
 ## Command line
 
 ```bash
@@ -120,6 +133,7 @@ blackout status     # what is on, the settings, the setup
 | `blackout on` / `blackout off` | Turn it on or off explicitly; safe to repeat, so good for scripts |
 | `blackout status` | Session details, settings, setup checks, menu bar app status and recent log |
 | `blackout config [<key> <value>]` | Show the saved settings, or change one |
+| `blackout hotkey [default]` | Pick a new global shortcut, or go back to the default |
 | `blackout setup-lid` | One-time setup for lid-close sleep prevention |
 | `blackout install` / `blackout uninstall` | Register or remove the menu bar app (use `make install`) |
 | `blackout help` | Show help |
@@ -140,7 +154,7 @@ An argument blackout does not recognize is an error; it never falls through to a
 1. Your current brightness and volume are saved
 2. The built-in display dims to 0%
 3. External monitors stay untouched — they remain your working screen (unless "Dim the external display too" is on; requires m1ddc)
-4. Audio is muted (left on when an external monitor is in use, unless set to always or never)
+4. Audio is muted (left on when an external monitor is in use, unless set to always or never). If you had already muted it yourself, blackout leaves it alone and does not un-mute it afterwards.
 5. `caffeinate` prevents idle sleep
 6. Lid-close sleep is disabled (if `blackout setup-lid` was run; left alone if sleep was already disabled system-wide)
 7. Closing the lid locks the screen immediately — the Mac keeps running, but nobody can open the lid into your session. The decision is made at the moment you close the lid: if an external display is connected and left undimmed, the lock is skipped so docked use keeps working (and the internal screen is re-dimmed when the lid reopens); otherwise it locks, even if the external was unplugged mid-session. Opening the lid onto a lock screen restores brightness so it is readable, and unlocking ends blackout entirely — always, regardless of connected displays.
@@ -158,7 +172,7 @@ A monitor counts as "in use" when macOS lists it and m1ddc can read it. One that
 ## How It Works
 
 ```
-   ⌃⌥⌘\ hotkey        menu bar icon         $ blackout
+   your hotkey         menu bar icon         $ blackout
         │                    │                    │
         └────────┬───────────┘                    │
                  ▼                                │

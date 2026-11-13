@@ -17,6 +17,24 @@ public enum ChangeNotifier {
     /// Call `handler` on the main queue after every post, for the life of
     /// the process
     public static func observe(_ handler: @escaping () -> Void) {
+        observe(name, handler)
+    }
+
+    // MARK: - Hotkey recorder
+
+    /// Asks the menu bar app to open its hotkey recorder: recording a
+    /// shortcut needs a window, which only the app has
+    public static let recordHotkeyName = "com.blackout.recordHotkey"
+
+    public static func requestHotkeyRecorder() {
+        notify_post(recordHotkeyName)
+    }
+
+    public static func observeHotkeyRecorderRequest(_ handler: @escaping () -> Void) {
+        observe(recordHotkeyName, handler)
+    }
+
+    private static func observe(_ name: String, _ handler: @escaping () -> Void) {
         var token: Int32 = 0
         notify_register_dispatch(name, &token, DispatchQueue.main) { _ in
             handler()

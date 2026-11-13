@@ -93,6 +93,14 @@ struct CommandLineParserTests {
         #expect(parse("config", "notifications", "on") == .configSet(key: "notifications", value: "on"))
     }
 
+    @Test func hotkeyCommand() {
+        #expect(parse("hotkey") == .hotkey(reset: false))
+        #expect(parse("hotkey", "default") == .hotkey(reset: true))
+        #expect(error("hotkey", "cmd-b") != nil)
+        #expect(error("hotkey", "default", "extra") != nil)
+        #expect(error("hotkey", "-e") != nil)
+    }
+
     @Test func configNeedsKeyAndValue() {
         #expect(error("config", "mute") != nil)
         #expect(error("config", "mute", "never", "extra") != nil)

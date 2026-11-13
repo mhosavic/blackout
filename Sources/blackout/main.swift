@@ -11,6 +11,7 @@ Usage:
   blackout [toggle|on|off] [options]   Toggle is the default
   blackout status                      What is on, the settings, the setup
   blackout config [<key> <value>]      Show the saved settings, or change one
+  blackout hotkey [default]            Pick a new global shortcut, or go back to the default
   blackout install                     Install the menu bar app and hotkey (via 'make install')
   blackout uninstall                   Remove the menu bar app and hotkey
   blackout setup-lid                   One-time setup so blackout can keep the Mac awake
@@ -34,7 +35,8 @@ When on: dims the screen, mutes audio, prevents sleep (even with the lid
 closed, after setup-lid) and locks the screen when the lid closes. Unlocking
 then ends blackout. Turning it off restores everything.
 
-Hotkey (when the menu bar app is installed): ⌃⌥⌘\\ (Ctrl+Option+Cmd+Backslash)
+The global shortcut (when the menu bar app is installed) is ⌃⌥⌘\\ unless you
+changed it; 'blackout status' shows the current one.
 """
 
 func printStandardError(_ message: String) {
@@ -150,6 +152,30 @@ func setConfig(key: String, value: String) {
     }
 }
 
+func changeHotkey(reset: Bool) {
+    var settings = Settings.load()
+    if reset {
+        settings.hotkey = .default
+        guard settings.save() else {
+            printStandardError("Could not write \(Settings.fileURL.path)")
+            exit(1)
+        }
+        print("Hotkey is \(settings.hotkey.display) again")
+        return
+    }
+
+    print("Hotkey is \(settings.hotkey.display)")
+    // Recording a shortcut needs a window to press it in, and only the
+    // menu bar app has one
+    guard AppInstaller.runningMenuAppPID() != nil else {
+        printStandardError("The menu bar app is not running, so there is nowhere to press a new shortcut.")
+        printStandardError("Start it with 'make install' in the repository, or use 'blackout hotkey default'.")
+        exit(1)
+    }
+    ChangeNotifier.requestHotkeyRecorder()
+    print("Press the new shortcut in the Blackout Hotkey window.")
+}
+
 /// The detached watcher a session spawns. Not in the help — users never run
 /// it directly, but it is visible in `ps` as `blackout --lid-watch`.
 func watchLid() -> Never {
@@ -194,6 +220,8 @@ case .success(let command):
         }
     case .configSet(let key, let value):
         setConfig(key: key, value: value)
+    case .hotkey(let reset):
+        changeHotkey(reset: reset)
     case .install:
         AppInstaller.install()
     case .uninstall:

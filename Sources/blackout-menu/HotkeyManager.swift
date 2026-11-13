@@ -1,27 +1,56 @@
 import Foundation
 import Carbon
+import BlackoutCore
 
 class HotkeyManager {
-
-    // Hotkey: ⌃⌥⌘\ (Control + Option + Command + Backslash)
-    // Key code 0x2A is backslash (\)
-    private static let hotkeyKeyCode: UInt32 = 0x2A
-    private static let hotkeyModifiers: UInt32 = UInt32(controlKey | optionKey | cmdKey)
 
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     private let callback: () -> Void
 
+    /// The shortcut currently registered with macOS, nil while none is
+    private(set) var current: Hotkey?
+
     init(callback: @escaping () -> Void) {
         self.callback = callback
     }
 
-    /// Register the global hotkey
-    func register() -> Bool {
+    /// Register `hotkey` as the global shortcut, replacing the one in place.
+    /// On failure the previous shortcut is gone too; the caller decides what
+    /// to fall back to.
+    func register(_ hotkey: Hotkey) -> Bool {
+        guard installHandlerIfNeeded() else { return false }
+        unregisterHotkey()
+
         // Define the hotkey ID
         var hotkeyID = EventHotKeyID()
         hotkeyID.signature = OSType(0x424C4B54) // 'BLKT' in hex
         hotkeyID.id = 1
+
+        var hotkeyRefTemp: EventHotKeyRef?
+        let registerStatus = RegisterEventHotKey(
+            hotkey.keyCode,
+            hotkey.modifiers,
+            hotkeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotkeyRefTemp
+        )
+
+        guard registerStatus == noErr else {
+            Logger.error("Failed to register hotkey \(hotkey.display): \(registerStatus)")
+            return false
+        }
+        self.hotkeyRef = hotkeyRefTemp
+        self.current = hotkey
+
+        Logger.info("Hotkey registered: \(hotkey.display)")
+        return true
+    }
+
+    /// The Carbon handler that receives every hot key press; installed once
+    private func installHandlerIfNeeded() -> Bool {
+        guard eventHandler == nil else { return true }
 
         // Store self pointer for callback
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
@@ -55,39 +84,16 @@ class HotkeyManager {
             return false
         }
         self.eventHandler = handlerRef
-
-        // Register the hotkey
-        var hotkeyRefTemp: EventHotKeyRef?
-        let registerStatus = RegisterEventHotKey(
-            HotkeyManager.hotkeyKeyCode,
-            HotkeyManager.hotkeyModifiers,
-            hotkeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotkeyRefTemp
-        )
-
-        guard registerStatus == noErr else {
-            Logger.error("Failed to register hotkey: \(registerStatus)")
-            return false
-        }
-        self.hotkeyRef = hotkeyRefTemp
-
-        Logger.info("Hotkey registered: ⌃⌥⌘\\")
         return true
     }
 
-    /// Unregister the global hotkey
-    func unregister() {
+    /// Stop listening for the shortcut, e.g. while a new one is being
+    /// recorded — pressing the old one must not toggle blackout then
+    func unregisterHotkey() {
         if let ref = hotkeyRef {
             UnregisterEventHotKey(ref)
             hotkeyRef = nil
-            Logger.info("Hotkey unregistered")
-        }
-
-        if let handler = eventHandler {
-            RemoveEventHandler(handler)
-            eventHandler = nil
+            current = nil
         }
     }
 
@@ -98,6 +104,9 @@ class HotkeyManager {
     }
 
     deinit {
-        unregister()
+        unregisterHotkey()
+        if let handler = eventHandler {
+            RemoveEventHandler(handler)
+        }
     }
 }

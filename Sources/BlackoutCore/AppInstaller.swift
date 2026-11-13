@@ -69,7 +69,7 @@ public enum AppInstaller {
 
         print("")
         print("Done. Blackout is in the menu bar and starts at login.")
-        print("Press ⌃⌥⌘\\ (Ctrl+Option+Cmd+Backslash) to toggle blackout.")
+        print("Press \(Settings.load().hotkey.display) to toggle blackout; change the shortcut from the menu.")
         if !(ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").contains(Substring(PathManager.cliLink.deletingLastPathComponent().path)) {
             print("Note: \(PathManager.cliLink.deletingLastPathComponent().path) is not on your PATH; add it to use 'blackout' from a terminal.")
         }
@@ -129,12 +129,7 @@ public enum AppInstaller {
         let fm = FileManager.default
         var lines: [String] = []
 
-        var runningPID: Int32?
-        if let pidString = try? String(contentsOf: PathManager.daemonPID, encoding: .utf8),
-           let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
-           SleepController.processName(pid: pid) == "blackout-menu" {
-            runningPID = pid
-        }
+        let runningPID = runningMenuAppPID()
 
         let installed = fm.fileExists(atPath: PathManager.installedMenuApp.path)
         if let runningPID {
@@ -146,7 +141,7 @@ public enum AppInstaller {
         }
         let startsAtLogin = fm.fileExists(atPath: PathManager.launchAgentPlist.path)
         lines.append("  Starts at login: \(startsAtLogin ? "yes" : "no")")
-        lines.append("  Hotkey: ⌃⌥⌘\\ (Ctrl+Option+Cmd+Backslash)")
+        lines.append("  Hotkey: \(Settings.load().hotkey.display) (change with 'blackout hotkey' or from the menu)")
 
         if let log = try? String(contentsOf: PathManager.daemonLog, encoding: .utf8) {
             let recent = log.components(separatedBy: .newlines).filter { !$0.isEmpty }.suffix(5)
@@ -159,6 +154,15 @@ public enum AppInstaller {
     }
 
     // MARK: - Helpers
+
+    /// The PID of the running menu bar app, or nil. The PID file alone
+    /// proves nothing — a crash leaves it behind — so the name is checked.
+    public static func runningMenuAppPID() -> Int32? {
+        guard let pidString = try? String(contentsOf: PathManager.daemonPID, encoding: .utf8),
+              let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
+              SleepController.processName(pid: pid) == "blackout-menu" else { return nil }
+        return pid
+    }
 
     /// Put a copy of `source` at `destination`, replacing what is there.
     /// The copy — the step that can fail — goes to a temporary name first,

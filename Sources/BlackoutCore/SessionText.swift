@@ -125,12 +125,15 @@ public enum SessionText {
     /// One aligned line per setting: key, current value, what it means and
     /// the values it accepts — everything `blackout config` needs to change it
     public static func settingsLines(_ settings: Settings) -> [String] {
-        return Settings.keys.map { key in
-            let value = settings.value(forKey: key) ?? ""
-            let accepted = key == "mute" ? MutePolicy.allCases.map(\.rawValue).joined(separator: "|") : "on|off"
+        func line(_ key: String, _ value: String, _ meaning: String) -> String {
             return key.padding(toLength: 15, withPad: " ", startingAt: 0)
                 + value.padding(toLength: 8, withPad: " ", startingAt: 0)
-                + "\(title(forSetting: key)) (\(accepted))"
+                + meaning
         }
+        let lines = Settings.keys.map { key -> String in
+            let accepted = key == "mute" ? MutePolicy.allCases.map(\.rawValue).joined(separator: "|") : "on|off"
+            return line(key, settings.value(forKey: key) ?? "", "\(title(forSetting: key)) (\(accepted))")
+        }
+        return lines + [line("hotkey", settings.hotkey.display, "Global shortcut (change with 'blackout hotkey' or from the menu)")]
     }
 }

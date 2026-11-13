@@ -31,6 +31,9 @@ public enum Command: Equatable {
     case status
     case configShow
     case configSet(key: String, value: String)
+    /// Change the global shortcut: open the recorder in the menu bar app,
+    /// or go back to the default
+    case hotkey(reset: Bool)
     case install
     case uninstall
     case setupLid
@@ -51,6 +54,7 @@ public enum CommandLineParser {
         "off": .off,
         "status": .status, "--status": .status,
         "config": .configShow,
+        "hotkey": .hotkey(reset: false),
         "install": .install, "--install": .install,
         "uninstall": .uninstall, "--uninstall": .uninstall,
         "setup-lid": .setupLid, "--setup-lid": .setupLid,
@@ -73,6 +77,7 @@ public enum CommandLineParser {
         var overrides = Overrides()
         var firstOverrideFlag: String?
         var configArguments: [String] = []
+        var hotkeyReset = false
 
         for argument in arguments {
             if let (keyPath, value) = overrideFlags[argument] {
@@ -88,6 +93,8 @@ public enum CommandLineParser {
                 command = parsed
             } else if command == .configShow, configArguments.count < 2, !argument.hasPrefix("-") {
                 configArguments.append(argument)
+            } else if command == .hotkey(reset: false), !hotkeyReset, argument == "default" {
+                hotkeyReset = true
             } else {
                 return .failure(ParseError(message: "Unknown argument: \(argument)"))
             }
@@ -102,6 +109,7 @@ public enum CommandLineParser {
             if let flag = firstOverrideFlag {
                 return .failure(ParseError(message: "\(flag) only applies when turning blackout on"))
             }
+            if other == .hotkey(reset: false) { return .success(.hotkey(reset: hotkeyReset)) }
             guard other == .configShow else { return .success(other) }
             switch configArguments.count {
             case 0: return .success(.configShow)

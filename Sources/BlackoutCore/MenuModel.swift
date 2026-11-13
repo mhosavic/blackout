@@ -6,6 +6,8 @@ public enum MenuAction: Equatable {
     case turnOff
     /// Change a setting, in the form `Settings.set(key:value:)` accepts
     case set(key: String, value: String)
+    /// Open the window that records a new global shortcut
+    case changeHotkey
     case openLog
     case quit
 }
@@ -68,6 +70,7 @@ public enum MenuModel {
                 items.append(.toggle(title: title, action: .set(key: key, value: isOn ? "off" : "on"), isOn: isOn))
             }
         }
+        items.append(.action(title: "Change Hotkey (\(settings.hotkey.display))…", action: .changeHotkey, showsHotkey: false))
         items.append(.separator)
 
         let warnings = warnings(state: state, stateFileExists: stateFileExists, settings: settings, health: health)

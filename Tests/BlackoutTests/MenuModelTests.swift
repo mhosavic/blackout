@@ -100,6 +100,13 @@ struct MenuModelTests {
         ])))
     }
 
+    @Test func menuOffersToChangeTheHotkeyAndShowsTheCurrentOne() {
+        #expect(menu().contains(.action(title: "Change Hotkey (⌃⌥⌘\\)…", action: .changeHotkey, showsHotkey: false)))
+
+        let custom = menu { $0.hotkey = Hotkey(keyCode: 11, modifiers: Hotkey.command | Hotkey.shift, keyLabel: "B") }
+        #expect(custom.contains(.action(title: "Change Hotkey (⇧⌘B)…", action: .changeHotkey, showsHotkey: false)))
+    }
+
     @Test func toggleActionsFlipTheValue() {
         let items = menu()
         #expect(toggle(items, titled: "Lock when the lid closes")?.action == .set(key: "lock", value: "off"))

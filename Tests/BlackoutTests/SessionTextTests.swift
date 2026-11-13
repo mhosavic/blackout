@@ -127,8 +127,13 @@ struct SessionTextTests {
         #expect(SessionText.label(for: MutePolicy.never) == "Never")
 
         settings.muteAudio = .never
+        settings.hotkey = Hotkey(keyCode: 11, modifiers: Hotkey.command | Hotkey.shift, keyLabel: "B")
         let lines = SessionText.settingsLines(settings)
-        #expect(lines.count == Settings.keys.count)
+        // One line per on/off setting, then the hotkey
+        #expect(lines.count == Settings.keys.count + 1)
+        #expect(lines.last?.hasPrefix("hotkey") == true)
+        #expect(lines.last?.contains("⇧⌘B") == true)
+        #expect(lines.last?.hasSuffix("(change with 'blackout hotkey' or from the menu)") == true)
         #expect(lines[0].hasPrefix("mute"))
         #expect(lines[0].contains("never"))
         #expect(lines[0].hasSuffix("Mute audio (auto|always|never)"))

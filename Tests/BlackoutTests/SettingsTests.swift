@@ -37,6 +37,29 @@ extension FileBackedTests {
         #expect(settings.keepAwakeLidClosed == true)
         #expect(settings.lockOnLidClose == true)
         #expect(settings.notifications == true)
+        #expect(settings.hotkey == Hotkey.default)
+    }
+
+    @Test func hotkeyRoundTrips() {
+        var settings = Settings()
+        settings.hotkey = Hotkey(keyCode: 11, modifiers: Hotkey.command | Hotkey.shift, keyLabel: "B")
+        #expect(settings.save())
+        #expect(Settings.load().hotkey == settings.hotkey)
+        #expect(Settings.load().hotkey.display == "⇧⌘B")
+    }
+
+    /// A hand-edited shortcut that could never be typed around (no ⌘, ⌃ or
+    /// ⌥), or one with pieces missing, falls back to the default alone
+    @Test func unusableHotkeyFallsBackToTheDefault() throws {
+        try write(#"{"dimExternal":true,"hotkey":{"keyCode":11,"modifiers":0,"label":"B"}}"#)
+        #expect(Settings.load().hotkey == Hotkey.default)
+        #expect(Settings.load().dimExternal == true)
+
+        try write(#"{"hotkey":{"keyCode":11}}"#)
+        #expect(Settings.load().hotkey == Hotkey.default)
+
+        try write(#"{"hotkey":"cmd-b"}"#)
+        #expect(Settings.load().hotkey == Hotkey.default)
     }
 
     @Test func missingFileLoadsDefaults() {
