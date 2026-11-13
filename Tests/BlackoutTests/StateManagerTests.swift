@@ -2,10 +2,8 @@ import Testing
 import Foundation
 import BlackoutCore
 
-/// Serialized because all tests share StateManager.stateFileURL,
-/// which each instance points at its own temporary directory
-@Suite(.serialized)
-final class StateManagerTests {
+extension FileBackedTests {
+@Suite final class StateManagerTests {
 
     private let tempDir: URL
     private let originalStateFileURL: URL
@@ -34,6 +32,34 @@ final class StateManagerTests {
         #expect(state?.caffeinatePID == 12345)
         #expect(state?.sleepDisabled == true)
         #expect(state?.lidWatcherPID == 54321)
+    }
+
+    @Test func summaryRoundTrips() {
+        let summary = SessionSummary(audio: .leftOnExternalDisplay, external: .leftOn, lidSleep: .disabled, lidLock: .armed)
+        #expect(StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: true, lidWatcherPID: 2, summary: summary))
+        #expect(StateManager.loadState()?.summary == summary)
+    }
+
+    /// The summary is for display only. A value this build does not know
+    /// (written by a newer one, or damaged) must never stand between the
+    /// user and getting their brightness back.
+    @Test func damagedSummaryDecodesAsNilAndStateStillLoads() throws {
+        let json = """
+        {
+          "originalBrightness": 0.7,
+          "caffeinatePID": 4242,
+          "sleepDisabled": true,
+          "activatedAt": "2026-11-13T19:36:19Z",
+          "summary": { "audio": "telepathy", "external": "none", "lidSleep": "disabled", "lidLock": "armed" }
+        }
+        """
+        try json.write(to: StateManager.stateFileURL, atomically: true, encoding: .utf8)
+
+        let state = StateManager.loadState()
+        #expect(state != nil)
+        #expect(state?.summary == nil)
+        #expect(state?.originalBrightness == 0.7)
+        #expect(state?.sleepDisabled == true)
     }
 
     @Test func saveWithSkippedFeaturesStoresNils() {
@@ -99,4 +125,5 @@ final class StateManagerTests {
         let saved = StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: false, lidWatcherPID: nil)
         #expect(!saved)
     }
+}
 }

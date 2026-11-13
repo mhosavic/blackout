@@ -40,9 +40,6 @@ let package = Package(
             path: "Sources/blackout",
             swiftSettings: [
                 .swiftLanguageMode(.v5)
-            ],
-            linkerSettings: [
-                .unsafeFlags(["-F", "/System/Library/PrivateFrameworks", "-framework", "DisplayServices"])
             ]
         ),
         .executableTarget(

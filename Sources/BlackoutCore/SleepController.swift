@@ -35,6 +35,15 @@ public struct SleepController {
         return kill(pid, 0) == 0
     }
 
+    /// The name of the process with this PID, or nil if there is none. A
+    /// saved PID proves nothing by being alive — after a reboot the number
+    /// can belong to anything — so callers compare the name before signalling.
+    public static func processName(pid: pid_t) -> String? {
+        var buffer = [CChar](repeating: 0, count: 256)
+        guard proc_name(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return String(cString: buffer)
+    }
+
     // MARK: - Lid-Close Sleep (pmset disablesleep)
 
     /// Check whether system-wide sleep is currently disabled (pmset SleepDisabled)

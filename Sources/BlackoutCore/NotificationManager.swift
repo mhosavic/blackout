@@ -7,8 +7,17 @@ public struct NotificationManager {
         let script = """
         display notification "\(message)" with title "\(title)"
         """
-        // Failure is fine — notification is not critical
-        Shell.run("/usr/bin/osascript", ["-e", script])
+        // Not waited on: osascript takes a few tenths of a second, the
+        // toggle should not, and a notification that fails is not critical
+        Shell.spawn("/usr/bin/osascript", ["-e", script])
+    }
+
+    public static func show(_ message: NotificationMessage) {
+        switch message {
+        case .enabled: showEnabled()
+        case .disabled: showDisabled()
+        case .sleepRestoreFailed: showSleepRestoreFailed()
+        }
     }
 
     /// Show notification that blackout mode is enabled

@@ -3,6 +3,34 @@ import Foundation
 /// Minimal helper for spawning external commands
 enum Shell {
 
+    /// How long a command may run before it is killed. Everything blackout
+    /// runs answers in well under a second; one that does not has hung, and
+    /// would otherwise hold a toggle — and the session lock — indefinitely.
+    static let timeout: TimeInterval = 10
+
+    /// Terminate `process` if it is still running after `timeout`. Cancel
+    /// the returned item once the process has exited.
+    private static func killAfterTimeout(_ process: Process) -> DispatchWorkItem {
+        let kill = DispatchWorkItem {
+            if process.isRunning { process.terminate() }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: kill)
+        return kill
+    }
+
+    /// Start a command and do not wait for it. stdio goes to /dev/null: the
+    /// child may outlive us, and inheriting our stdout would hold open the
+    /// pipe the menu bar app reads to EOF.
+    static func spawn(_ path: String, _ arguments: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+    }
+
     /// Run a command quietly, discarding its output.
     /// Returns the exit status, or nil if it failed to launch.
     @discardableResult
@@ -15,7 +43,9 @@ enum Shell {
 
         do {
             try process.run()
+            let kill = killAfterTimeout(process)
             process.waitUntilExit()
+            kill.cancel()
             return process.terminationStatus
         } catch {
             return nil
@@ -35,9 +65,11 @@ enum Shell {
 
         do {
             try process.run()
+            let kill = killAfterTimeout(process)
             // Drain the pipe before waiting so large output can't deadlock
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
+            kill.cancel()
             guard process.terminationStatus == 0 else { return nil }
             return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {

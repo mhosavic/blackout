@@ -84,4 +84,16 @@ struct SleepControllerTests {
 
         #expect(!SleepController.isProcessRunning(pid: process.processIdentifier))
     }
+
+    @Test func processNameOfCurrentProcess() {
+        #expect(SleepController.processName(pid: ProcessInfo.processInfo.processIdentifier) == "blackout-tests")
+    }
+
+    @Test func processNameOfExitedProcessIsNil() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try process.run()
+        process.waitUntilExit()
+        #expect(SleepController.processName(pid: process.processIdentifier) == nil)
+    }
 }

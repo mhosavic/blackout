@@ -16,45 +16,14 @@ let noLockFlag = args.contains("--no-lock") || args.contains("-k")
 // Each handler reloads state: if the session ended without this process being
 // killed, there is nothing left to act on.
 if args.contains("--lid-watch") {
+    let session = Session()
+    func act(_ action: Session.WatcherAction) {
+        if action == .stop { exit(0) }
+    }
     let watching = LidLockController.watch(
-        onLidClose: {
-            guard let state = StateManager.loadState() else { exit(0) }
-            // Decided here, not at enable time, so plugging or unplugging a
-            // display mid-session changes the outcome — unplugged means the
-            // protection comes back, docked means the session stays usable
-            let lock = LidLockController.shouldLockOnLidClose(
-                externalOnline: ExternalDisplayController.isExternalDisplayOnline(),
-                externalWasDimmed: state.externalLuminance != nil
-            )
-            if lock {
-                // Undo the dim before locking. The panel may already be
-                // powering down, so this is best-effort; the open handler is
-                // the one that has to land.
-                restoreDisplays(state: state)
-                LidLockController.lockScreen()
-            }
-        },
-        onLidOpen: { screenLocked in
-            guard let state = StateManager.loadState() else { exit(0) }
-            if screenLocked {
-                // Without this the lock screen is a black rectangle and the
-                // password field cannot be seen
-                restoreDisplays(state: state)
-            } else {
-                // Docked lid cycle: macOS re-lights the panel on open, which
-                // would leave a bright screen with blackout still on — re-dim
-                // so brightness keeps telling the truth
-                BrightnessController.dimScreen()
-            }
-        },
-        onUnlock: {
-            guard let state = StateManager.loadState() else { exit(0) }
-            // Authenticating means the owner is back: end the session so the
-            // restored brightness keeps telling the truth about blackout.
-            // Unconditional on purpose — no display check may ever gate this.
-            disable(state: state)
-            exit(0)
-        }
+        onLidClose: { act(session.handleLidClose()) },
+        onLidOpen: { screenLocked in act(session.handleLidOpen(screenLocked: screenLocked)) },
+        onUnlock: { act(session.handleUnlock(notify: Settings.load().notifications)) }
     )
     exit(watching ? 0 : 1)
 }
@@ -114,159 +83,23 @@ if args.contains("--help") || args.contains("-h") {
     exit(0)
 }
 
-/// Bring the panels back to what the user had. Idempotent — disable() sets the
-/// same values again — so the watcher can call it on every lid event.
-func restoreDisplays(state: BlackoutState) {
-    BrightnessController.setBrightness(state.originalBrightness)
-    if let extLum = state.externalLuminance {
-        ExternalDisplayController.setLuminance(extLum)
-    }
-}
-
-func enable(dimExternal: Bool, noMute: Bool, noLid: Bool, noLock: Bool) {
-    // Probe the external display once. When one is connected it stays the
-    // user's working screen: audio stays on and it is not dimmed unless
-    // --dim-external asks for the old dim-everything behavior
-    let detectedLuminance = ExternalDisplayController.getLuminance()
-    let hasExternalDisplay = detectedLuminance != nil
-    let skipMute = noMute || hasExternalDisplay
-
-    // The watcher always runs; whether a given lid close locks is decided at
-    // that moment from live display presence. externalLeftOn only shapes the
-    // status line below.
-    let externalLeftOn = hasExternalDisplay && !dimExternal
-    let lockOnLid = !noLock && LidLockController.isLockAvailable()
-
-    // Save current brightness, volume, and external display luminance
-    let currentBrightness = BrightnessController.getBrightness()
-    let currentVolume = skipMute ? nil : AudioController.getVolume()
-    let externalLuminance = dimExternal ? detectedLuminance : nil
-
-    // Start caffeinate to prevent sleep
-    guard let pid = SleepController.preventSleep() else {
-        print("Failed to start caffeinate")
-        exit(1)
-    }
-
-    // Disable lid-close sleep; if sleep was already disabled system-wide
-    // (e.g. by the user via pmset), leave it alone so disable() won't undo it
-    var sleepDisabledByUs = false
-    var sleepAlreadyDisabled = false
-    if !noLid {
-        if SleepController.isSleepDisabled() {
-            sleepAlreadyDisabled = true
-        } else {
-            sleepDisabledByUs = SleepController.disableLidSleep()
-        }
-    }
-
-    let lidWatcherPID = lockOnLid ? LidLockController.startWatcher() : nil
-
-    // Save state before changing anything visible; without it the session
-    // could never be restored, so undo and bail if the write fails
-    guard StateManager.saveState(brightness: currentBrightness, volume: currentVolume, externalLuminance: externalLuminance, pid: pid, sleepDisabled: sleepDisabledByUs, lidWatcherPID: lidWatcherPID) else {
-        SleepController.allowSleep(pid: pid)
-        if let watcherPID = lidWatcherPID {
-            LidLockController.stopWatcher(pid: watcherPID)
-        }
-        if sleepDisabledByUs {
-            _ = SleepController.restoreLidSleep()
-        }
-        print("Failed to save state — blackout not enabled")
-        exit(1)
-    }
-
-    // Dim screens and mute audio
-    BrightnessController.dimScreen()
-    if externalLuminance != nil {
-        ExternalDisplayController.dim()
-    }
-    if !skipMute {
-        AudioController.mute()
-    }
-
-    // Show notification
-    NotificationManager.showEnabled()
-
+func printEnabled(_ state: BlackoutState) {
     print("Blackout: ENABLED")
-    print("  Original brightness: \(String(format: "%.0f", currentBrightness * 100))%")
-    if let extLum = externalLuminance {
-        print("  External display: dimmed (was \(extLum)%)")
-    } else if hasExternalDisplay {
-        print("  External display: left on (--dim-external to dim)")
-    }
-    if let vol = currentVolume {
-        print("  Original volume: \(vol)%")
-    } else if noMute {
-        print("  Audio: skipped (--no-mute)")
-    } else if hasExternalDisplay {
-        print("  Audio: skipped (external monitor detected)")
-    }
-    if sleepDisabledByUs {
-        print("  Lid sleep: disabled (safe to close the lid)")
-    } else if sleepAlreadyDisabled {
-        print("  Lid sleep: already disabled system-wide")
-    } else if noLid {
-        print("  Lid sleep: skipped (--no-lid)")
-    } else {
-        print("  Lid sleep: unavailable (run 'blackout --setup-lid' once to enable)")
-    }
-    if lidWatcherPID != nil {
-        if externalLeftOn {
-            print("  Lock on lid close: armed (skips the lock while the external display is in use)")
-        } else {
-            print("  Lock on lid close: armed (unlocking ends blackout)")
-        }
-    } else if noLock {
-        print("  Lock on lid close: skipped (--no-lock)")
-    } else if !LidLockController.isLockAvailable() {
-        print("  Lock on lid close: unavailable (SACLockScreenImmediate not found)")
-    } else {
-        print("  Lock on lid close: failed to start the watcher")
+    print("  Original brightness: \(String(format: "%.0f", state.originalBrightness * 100))%")
+    if let summary = state.summary {
+        print("  External display: \(summary.external.rawValue)")
+        print("  Audio: \(summary.audio.rawValue)")
+        print("  Lid sleep: \(summary.lidSleep.rawValue)")
+        print("  Lock on lid close: \(summary.lidLock.rawValue)")
     }
     print("  Run 'blackout' again to disable")
 }
 
-func disable(state: BlackoutState) {
-    // Stop caffeinate to allow sleep — unless it already died (crash/reboot),
-    // in which case the PID may have been reused by another process
-    if SleepController.isProcessRunning(pid: state.caffeinatePID) {
-        SleepController.allowSleep(pid: state.caffeinatePID)
-    } else {
+func printDisabled(_ report: Session.DisableReport) {
+    let state = report.state
+    if report.recoveredStaleSession {
         print("Recovering stale session (caffeinate was no longer running)")
     }
-
-    // Stop the lid watcher. Skip our own PID: on the unlock path this function
-    // runs inside the watcher, and SIGTERMing ourselves here would abandon the
-    // restore half-done. A dead or missing PID just means it already exited.
-    if let watcherPID = state.lidWatcherPID,
-       watcherPID != ProcessInfo.processInfo.processIdentifier,
-       SleepController.isProcessRunning(pid: watcherPID) {
-        LidLockController.stopWatcher(pid: watcherPID)
-    }
-
-    // Re-enable lid-close sleep if we disabled it
-    var lidSleepRestored = false
-    if state.sleepDisabled == true {
-        lidSleepRestored = SleepController.restoreLidSleep()
-    }
-
-    // Restore original brightness, external display, and volume
-    BrightnessController.setBrightness(state.originalBrightness)
-    if let extLum = state.externalLuminance {
-        ExternalDisplayController.setLuminance(extLum)
-    }
-    if let vol = state.originalVolume {
-        AudioController.unmute()
-        AudioController.setVolume(vol)
-    }
-
-    // Clear state file
-    StateManager.clearState()
-
-    // Show notification
-    NotificationManager.showDisabled()
-
     print("Blackout: DISABLED")
     print("  Brightness restored to: \(String(format: "%.0f", state.originalBrightness * 100))%")
     if let extLum = state.externalLuminance {
@@ -275,25 +108,44 @@ func disable(state: BlackoutState) {
     if let vol = state.originalVolume {
         print("  Volume restored to: \(vol)%")
     }
-    if lidSleepRestored {
-        print("  Lid sleep: re-enabled")
-    } else if state.sleepDisabled == true {
+    if report.lidSleepRestoreFailed {
         print("  WARNING: could not re-enable sleep!")
         print("  Your Mac will NOT sleep until you run: sudo pmset -a disablesleep 0")
-        NotificationManager.showSleepRestoreFailed()
+    } else if state.sleepDisabled == true {
+        print("  Lid sleep: re-enabled")
     }
 }
 
 // Toggle based on saved state
+let session = Session()
+var settings = Settings.load()
+if dimExternalFlag { settings.dimExternal = true }
+if noMuteFlag { settings.muteAudio = .never }
+if noLidFlag { settings.keepAwakeLidClosed = false }
+if noLockFlag { settings.lockOnLidClose = false }
+
 if StateManager.hasState() {
-    if let state = StateManager.loadState() {
-        disable(state: state)
-    } else {
+    switch session.disable(notify: settings.notifications) {
+    case .disabled(let report):
+        printDisabled(report)
+    case .alreadyOff:
+        print("Blackout is already off")
+    case .corruptState:
         print("State file is corrupt — clearing it.")
         print("Brightness, volume, or sleep settings may need manual restoring.")
-        StateManager.clearState()
         exit(1)
     }
 } else {
-    enable(dimExternal: dimExternalFlag, noMute: noMuteFlag, noLid: noLidFlag, noLock: noLockFlag)
+    switch session.enable(settings: settings) {
+    case .enabled(let report):
+        printEnabled(report.state)
+    case .alreadyOn:
+        print("Blackout is already on")
+    case .busy:
+        print("Another blackout command is still running")
+        exit(1)
+    case .failed(let message):
+        print(message)
+        exit(1)
+    }
 }
