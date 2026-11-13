@@ -19,10 +19,10 @@ enum MenuBarIcon {
             }
 
             if on {
-                circle(radius: 5.5).fill()
+                circle(radius: 5.3).fill()
                 let corona = NSBezierPath()
-                corona.appendArc(withCenter: center, radius: 7.7, startAngle: -35, endAngle: 125)
-                corona.lineWidth = 1.35
+                corona.appendArc(withCenter: center, radius: 7.6, startAngle: -40, endAngle: 130)
+                corona.lineWidth = 1.6
                 corona.lineCapStyle = .round
                 corona.stroke()
             } else {
