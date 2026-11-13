@@ -129,26 +129,44 @@ public struct Session {
         // everything. Carrying on would then dim and mute with no session
         // and no restore data, so each remaining step first checks that the
         // session is still there.
+        var switchedOff: UInt32?
+        // An `off` that ran underneath cannot have known about a display
+        // switched off after it finished, so it is switched back on here
+        func cancelled() -> EnableResult {
+            if let switchedOff {
+                _ = system.setDisplay(switchedOff, enabled: true)
+            }
+            return .cancelled
+        }
+
         if !turnBuiltinOff {
             system.setBrightness(0.0)
-        } else if let builtinID, !system.setDisplay(builtinID, enabled: false) {
-            // macOS refused: go dark the old way, and correct the record so
-            // the menu does not claim the display is off. Best effort — the
-            // restore reads the same either way.
-            system.setBrightness(0.0)
-            state.builtinOff = nil
-            state.summary?.builtin = .offUnavailable
-            _ = StateManager.save(state)
+        } else if let builtinID {
+            guard StateManager.hasState() else { return .cancelled }
+            if system.setDisplay(builtinID, enabled: false) {
+                switchedOff = builtinID
+            } else {
+                // macOS refused: go dark the old way, and correct the record
+                // so the menu does not claim the display is off and a later
+                // display change does not try again. Best effort — the
+                // restore reads the same either way.
+                system.setBrightness(0.0)
+                if StateManager.hasState() {
+                    state.builtinOff = nil
+                    state.summary?.builtin = .offUnavailable
+                    _ = StateManager.save(state)
+                }
+            }
         }
         if externalLuminance != nil {
-            guard StateManager.hasState() else { return .cancelled }
+            guard StateManager.hasState() else { return cancelled() }
             system.setExternalLuminance(0)
         }
         if volume != nil {
-            guard StateManager.hasState() else { return .cancelled }
+            guard StateManager.hasState() else { return cancelled() }
             system.setMuted(true)
         }
-        guard StateManager.hasState() else { return .cancelled }
+        guard StateManager.hasState() else { return cancelled() }
         if settings.notifications {
             system.notify(.enabled)
         }
@@ -209,6 +227,14 @@ public struct Session {
         }
 
         restoreDisplays(state: state)
+        // Second attempt, and the user is told if it fails: once the state
+        // is cleared nothing else would ever switch it back on. Not with the
+        // lid shut, where staying dark is expected.
+        if state.builtinOff == true, let id = state.builtinDisplayID,
+           system.builtinDisplayID() == nil, !system.isLidClosed(),
+           !system.setDisplay(id, enabled: true) {
+            system.notify(.builtinDisplayStuckOff)
+        }
         if let volume = state.originalVolume {
             system.setMuted(false)
             system.setVolume(volume)
@@ -232,10 +258,10 @@ public struct Session {
 
     /// Bring the panels back to what the user had. Idempotent — disable sets
     /// the same values again — so the watcher can call it on every lid event.
-    private func restoreDisplays(state: BlackoutState) {
+    private func restoreDisplays(state: BlackoutState, switchBuiltinOn: Bool = true) {
         // Switched off by the session: back on first, or the brightness
         // below has no display to land on
-        if state.builtinOff == true, let id = state.builtinDisplayID, system.builtinDisplayID() == nil {
+        if switchBuiltinOn, state.builtinOff == true, let id = state.builtinDisplayID, system.builtinDisplayID() == nil {
             _ = system.setDisplay(id, enabled: true)
         }
         system.setBrightness(state.originalBrightness)
@@ -268,8 +294,10 @@ public struct Session {
         if lock {
             // Undo the dim before locking. The panel may already be
             // powering down, so this is best-effort; the open handler is
-            // the one that has to land.
-            restoreDisplays(state: state)
+            // the one that has to land. A display switched off is left to
+            // the open handler too: switching it on waits for a panel that
+            // cannot appear with the lid shut, and the lock must not wait.
+            restoreDisplays(state: state, switchBuiltinOn: false)
             system.lockScreen()
         }
         return .keepWatching
@@ -306,39 +334,61 @@ public struct Session {
     }
 
     /// Make the built-in display match what the session wants right now:
-    /// off while an external display is online, on and dimmed while none
+    /// off while an external display is in use, on and dimmed while none
     /// is — the Mac must never be left without a screen. Does nothing when
     /// it already matches, so the display change this causes settles
     /// instead of looping.
     ///
     /// Under the session lock, with the state read again inside it: a
     /// `blackout off` finishing in between must not have its restored
-    /// display switched off again by a decision made a moment earlier.
+    /// display switched off again by a decision made a moment earlier. The
+    /// wait is short — this runs on the watcher's only thread, and the lid
+    /// and unlock handlers must not queue behind a hung toggle. Giving up
+    /// is safe: the next display change tries again.
     private func reconcileBuiltinDisplay() {
-        _ = SessionLock.withLock {
+        _ = SessionLock.withLock(waitingAtMost: 3) {
             guard var state = StateManager.loadState(), state.builtinOff == true else { return }
 
-            if system.isExternalDisplayOnline() {
-                // nil: already off, or the lid is shut — nothing to do
-                guard let id = system.builtinDisplayID() else { return }
-                if state.builtinDisplayID != id {
-                    // On disk before the display goes off, or it could
-                    // never be found again to switch back on
-                    state.builtinDisplayID = id
-                    guard StateManager.save(state) else {
-                        system.setBrightness(0.0)
-                        return
-                    }
-                }
-                if !system.setDisplay(id, enabled: false) {
-                    system.setBrightness(0.0)
-                }
-            } else {
-                if system.builtinDisplayID() == nil, let id = state.builtinDisplayID {
+            // A state file outlives a crash or a power cut. With no session
+            // actually running the display may be brought back, but never
+            // switched off or dimmed.
+            let running = system.isCaffeinateRunning(pid: state.caffeinatePID)
+            // A lock screen is never darkened or moved: the lid-open
+            // restore has just lit it
+            let locked = system.isScreenLocked()
+
+            guard system.isExternalDisplayOnline() else {
+                if system.builtinDisplayID() == nil, !system.isLidClosed(), let id = state.builtinDisplayID {
                     _ = system.setDisplay(id, enabled: true)
                 }
                 // Blackout is still on, now on a laptop alone: dark, as it
                 // would be had the session started undocked
+                if running && !locked {
+                    system.setBrightness(0.0)
+                }
+                return
+            }
+
+            guard running, !locked else { return }
+            // nil: already off, or the lid is shut — nothing to do
+            guard let id = system.builtinDisplayID() else { return }
+            // Listed by macOS but unreadable: AirPlay, Sidecar, a virtual
+            // display, a monitor switched off. Not a screen in use, so the
+            // built-in stays on, dark.
+            guard system.externalLuminance() != nil else {
+                system.setBrightness(0.0)
+                return
+            }
+            if state.builtinDisplayID != id {
+                // On disk before the display goes off, or it could never be
+                // found again to switch back on
+                state.builtinDisplayID = id
+                guard StateManager.save(state) else {
+                    system.setBrightness(0.0)
+                    return
+                }
+            }
+            if !system.setDisplay(id, enabled: false) {
                 system.setBrightness(0.0)
             }
         }
@@ -354,8 +404,15 @@ public struct Session {
     public func handleUnlock(notify: Bool) -> WatcherAction {
         guard let state = StateManager.loadState() else { return .stop }
         // A watcher running only for built-in-off mode behaves as if there
-        // were none: with the lock setting off, an unlock ends nothing
-        guard lockIsArmed(state) else { return .keepWatching }
+        // were none: with the lock setting off, an unlock ends nothing. The
+        // session goes on, so a built-in lit for the lock screen goes back
+        // to what the session wants.
+        guard lockIsArmed(state) else {
+            if state.builtinOff == true {
+                reconcileBuiltinDisplay()
+            }
+            return .keepWatching
+        }
         // Authenticating means the owner is back: end the session so the
         // restored brightness keeps telling the truth about blackout.
         // Unconditional on purpose — no display check may ever gate this.

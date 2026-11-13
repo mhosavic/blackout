@@ -1,10 +1,14 @@
 import Foundation
+import CoreGraphics
 
 public enum NotificationMessage {
     case enabled
     case disabled
     /// Re-enabling sleep failed; the Mac will not sleep until the user acts
     case sleepRestoreFailed
+    /// The built-in display, switched off for the session, did not come
+    /// back on
+    case builtinDisplayStuckOff
 }
 
 /// Everything a session reads from or does to the Mac. The one seam between
@@ -15,6 +19,8 @@ public protocol SystemControls {
     func setBrightness(_ value: Double)
 
     func isExternalDisplayOnline() -> Bool
+    func isScreenLocked() -> Bool
+    func isLidClosed() -> Bool
 
     /// Whether this macOS can switch a display off at all
     func canSwitchDisplaysOff() -> Bool
@@ -59,6 +65,11 @@ public struct LiveSystem: SystemControls {
     public func setBrightness(_ value: Double) { BrightnessController.setBrightness(value) }
 
     public func isExternalDisplayOnline() -> Bool { ExternalDisplayController.isExternalDisplayOnline() }
+    public func isScreenLocked() -> Bool {
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        return session["CGSSessionScreenIsLocked"] as? Bool ?? false
+    }
+    public func isLidClosed() -> Bool { LidLockController.isLidClosed() ?? false }
 
     public func canSwitchDisplaysOff() -> Bool { DisplaySwitch.isAvailable() }
     public func builtinDisplayID() -> UInt32? { DisplaySwitch.builtinDisplayID() }

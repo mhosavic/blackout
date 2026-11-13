@@ -17,8 +17,8 @@ public enum SessionLock {
 
     /// Run `body` holding the lock. Returns nil, without running it, if
     /// another command still held the lock after `timeout`.
-    public static func withLock<T>(_ body: () -> T) -> T? {
-        return run(body, proceedOnTimeout: false)
+    public static func withLock<T>(waitingAtMost limit: TimeInterval? = nil, _ body: () -> T) -> T? {
+        return run(body, proceedOnTimeout: false, limit: limit ?? timeout)
     }
 
     /// Run `body` holding the lock, or without it if another command still
@@ -27,10 +27,10 @@ public enum SessionLock {
     /// runs twice.
     public static func withLockOrProceed<T>(_ body: () -> T) -> T {
         // Never nil: proceedOnTimeout always runs the body
-        return run(body, proceedOnTimeout: true)!
+        return run(body, proceedOnTimeout: true, limit: timeout)!
     }
 
-    private static func run<T>(_ body: () -> T, proceedOnTimeout: Bool) -> T? {
+    private static func run<T>(_ body: () -> T, proceedOnTimeout: Bool, limit: TimeInterval) -> T? {
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
@@ -41,7 +41,7 @@ public enum SessionLock {
         guard fd >= 0 else { return body() }
         defer { close(fd) }
 
-        let deadline = Date().addingTimeInterval(timeout)
+        let deadline = Date().addingTimeInterval(limit)
         while flock(fd, LOCK_EX | LOCK_NB) != 0 {
             if Date() >= deadline {
                 return proceedOnTimeout ? body() : nil

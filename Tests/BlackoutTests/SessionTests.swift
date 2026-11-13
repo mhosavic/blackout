@@ -334,32 +334,40 @@ extension FileBackedTests {
 
         #expect(system.events.contains("setBrightness 0.0"))
         #expect(StateManager.loadState()?.summary?.builtin == .offUnavailable)
+        // No longer in this mode, or a later display change would try again
+        #expect(StateManager.loadState()?.builtinOff == nil)
     }
 
-    /// In this mode the watcher is what brings the screen back when the
-    /// monitor is unplugged, so it runs even with the lid lock switched off
-    @Test func builtinOffStartsTheWatcherEvenWithTheLockOff() {
-        #expect(isEnabled(enableDockedWithBuiltinOff { $0.lockOnLidClose = false }))
+    /// No watcher means nothing would bring the screen back after an
+    /// unplug, so the display is dimmed rather than switched off
+    @Test func enableDimsInsteadWhenTheWatcherCannotStart() {
+        system.watcherPID = nil
 
-        #expect(system.events.contains("startWatcher"))
-        let state = StateManager.loadState()
-        #expect(state?.lidWatcherPID == 2002)
-        #expect(state?.lidLockArmed == false)
-        #expect(state?.summary?.lidLock == .offBySetting)
-    }
-
-    @Test func disableSwitchesTheBuiltinBackOnBeforeRestoringBrightness() {
         #expect(isEnabled(enableDockedWithBuiltinOff()))
-        system.events = []
 
-        guard case .disabled = session.disable(notify: false) else {
-            Issue.record("disable should succeed")
+        #expect(!system.events.contains { $0.hasPrefix("setDisplay") })
+        #expect(system.events.contains("setBrightness 0.0"))
+        let state = StateManager.loadState()
+        #expect(state?.builtinOff == nil)
+        #expect(state?.summary?.builtin == .offUnavailable)
+    }
+
+    /// An `off` ran underneath a slow enable and restored everything. The
+    /// display this enable then switched off must come back on: there is no
+    /// session left that would ever do it.
+    @Test func cancelledEnableSwitchesTheBuiltinBackOn() {
+        system.externalOnline = true
+        system.externalLuminanceValue = 80
+        system.onSetDisplay = { StateManager.clearState() }
+
+        let result = session.enable(settings: settings { $0.builtinOff = true; $0.muteAudio = .always })
+
+        guard case .cancelled = result else {
+            Issue.record("enable should report cancelled, got \(result)")
             return
         }
-        let on = system.events.firstIndex(of: "setDisplay 1 on")
-        let brightness = system.events.firstIndex(of: "setBrightness 0.62")
-        #expect(on != nil && brightness != nil)
-        if let on, let brightness { #expect(on < brightness) }
+        #expect(system.events.last == "setDisplay 1 on")
+        #expect(!StateManager.hasState())
     }
 
     /// The monitor is unplugged while the built-in is off: without this the
@@ -382,7 +390,130 @@ extension FileBackedTests {
         system.externalOnline = true
 
         #expect(session.handleDisplaysChanged() == .keepWatching)
-        #expect(system.events == ["setDisplay 1 off"])
+        #expect(system.events == ["probeExternalLuminance", "setDisplay 1 off"])
+    }
+
+    /// The approved rule: a lock screen is never left dark. Sequence found
+    /// in review — monitor unplugged, lid closed (locks), lid opened: the
+    /// open restores brightness, and the display change the lid itself
+    /// raises must not dim it again a moment later.
+    @Test func aDisplayChangeNeverDarkensTheLockScreen() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.externalOnline = false
+        _ = session.handleDisplaysChanged()
+        #expect(session.handleLidClose() == .keepWatching)
+        system.screenLocked = true
+        system.events = []
+
+        #expect(session.handleLidOpen(screenLocked: true) == .keepWatching)
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+
+        #expect(system.events == ["setBrightness 0.62"])
+    }
+
+    /// Locked with the monitor still attached: the lock screen needs no
+    /// help, and the built-in that the lid-open restore lit is left alone
+    @Test func aDisplayChangeWhileLockedDoesNotSwitchTheBuiltinOff() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.builtinID = 1
+        system.screenLocked = true
+        system.events = []
+
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        #expect(system.events.isEmpty)
+    }
+
+    /// After a crash or power cut the state file outlives the session. A
+    /// monitor plugged in then must not switch the screen off for a
+    /// blackout that is not running — but a missing screen is still brought
+    /// back.
+    @Test func aDeadSessionNeverSwitchesTheBuiltinOff() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.runningCaffeinates = []
+        system.builtinID = 1
+        system.events = []
+
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        #expect(system.events.isEmpty)
+
+        system.builtinID = nil
+        system.externalOnline = false
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        // Back on, and not dimmed: no blackout is running
+        #expect(system.events == ["setDisplay 1 on"])
+    }
+
+    /// AirPlay, Sidecar or a virtual display appearing mid-session is
+    /// listed by macOS but is not a monitor in use; switching the built-in
+    /// off for it would leave nothing to look at
+    @Test func aDisplayThatM1ddcCannotReadDoesNotSwitchTheBuiltinOff() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.externalOnline = false
+        _ = session.handleDisplaysChanged()
+        system.events = []
+        system.externalOnline = true
+        system.externalLuminanceValue = nil
+
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        #expect(system.events == ["probeExternalLuminance", "setBrightness 0.0"])
+    }
+
+    /// With the lid shut the built-in cannot appear; trying to switch it on
+    /// on every display change would only wait and repeat
+    @Test func lidShutUndockedDoesNotTryToSwitchTheBuiltinOn() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.externalOnline = false
+        system.lidClosed = true
+        system.events = []
+
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        #expect(!system.events.contains { $0.hasPrefix("setDisplay") })
+    }
+
+    /// Closing the lid has to lock at once. Switching the display on first
+    /// would wait for a panel that cannot appear with the lid shut.
+    @Test func lidCloseLocksWithoutSwitchingTheDisplay() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.externalOnline = false
+        system.events = []
+
+        #expect(session.handleLidClose() == .keepWatching)
+        #expect(system.events == ["setBrightness 0.62", "lockScreen"])
+    }
+
+    @Test func disableWarnsWhenTheBuiltinCannotBeSwitchedBackOn() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.switchSucceeds = false
+        system.events = []
+
+        _ = session.disable(notify: false)
+        #expect(system.events.contains("notify builtinDisplayStuckOff"))
+    }
+
+    /// With the lid shut the display staying dark is expected, not a fault
+    @Test func disableDoesNotWarnWithTheLidShut() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.switchSucceeds = false
+        system.lidClosed = true
+        system.events = []
+
+        _ = session.disable(notify: false)
+        #expect(!system.events.contains("notify builtinDisplayStuckOff"))
+    }
+
+    /// Lock setting off, but macOS locked by itself and the lid-open restore
+    /// lit the built-in for the lock screen. After the unlock the session
+    /// goes on, so the display has to go back to what the session wants.
+    @Test func unlockWithoutTheLockArmedPutsTheBuiltinBackOff() {
+        #expect(isEnabled(enableDockedWithBuiltinOff { $0.lockOnLidClose = false }))
+        system.screenLocked = true
+        _ = session.handleLidOpen(screenLocked: true)
+        system.screenLocked = false
+        system.events = []
+
+        #expect(session.handleUnlock(notify: true) == .keepWatching)
+        #expect(system.events == ["probeExternalLuminance", "setDisplay 1 off"])
+        #expect(StateManager.hasState())
     }
 
     /// Switching the display off itself raises a display-change event; that
@@ -413,7 +544,7 @@ extension FileBackedTests {
         system.builtinID = 1
 
         #expect(session.handleLidOpen(screenLocked: false) == .keepWatching)
-        #expect(system.events == ["setDisplay 1 off"])
+        #expect(system.events == ["probeExternalLuminance", "setDisplay 1 off"])
         #expect(StateManager.loadState()?.builtinDisplayID == 1)
     }
 

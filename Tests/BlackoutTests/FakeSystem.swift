@@ -29,6 +29,8 @@ final class FakeSystem: SystemControls {
     /// or the lid is shut
     var builtinID: UInt32? = 1
     var switchSucceeds = true
+    var screenLocked = false
+    var lidClosed = false
     /// How long startCaffeinate takes, to hold a window open for a second caller
     var caffeinateDelay: TimeInterval = 0
 
@@ -45,6 +47,9 @@ final class FakeSystem: SystemControls {
     }
 
     func isExternalDisplayOnline() -> Bool { externalOnline }
+
+    func isScreenLocked() -> Bool { screenLocked }
+    func isLidClosed() -> Bool { lidClosed }
 
     func canSwitchDisplaysOff() -> Bool { canSwitchOff }
     func builtinDisplayID() -> UInt32? { builtinID }

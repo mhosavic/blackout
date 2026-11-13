@@ -59,7 +59,9 @@ public enum DisplaySwitch {
         }
         guard CGCompleteDisplayConfiguration(config, .forSession) == .success else { return false }
 
-        guard enabled else { return true }
+        // With the lid shut the panel cannot appear; it is marked to come on
+        // when the lid opens, and there is nothing to wait for
+        guard enabled, LidLockController.isLidClosed() != true else { return true }
         // A display takes a moment to come back; callers go on to set its
         // brightness, which only works once it is listed again
         let deadline = Date().addingTimeInterval(2)

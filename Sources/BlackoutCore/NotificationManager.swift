@@ -17,6 +17,11 @@ public struct NotificationManager {
         case .enabled: showEnabled()
         case .disabled: showDisabled()
         case .sleepRestoreFailed: showSleepRestoreFailed()
+        case .builtinDisplayStuckOff:
+            showNotification(
+                title: "Blackout",
+                message: "The built-in display did not come back on. Close and reopen the lid."
+            )
         }
     }
 

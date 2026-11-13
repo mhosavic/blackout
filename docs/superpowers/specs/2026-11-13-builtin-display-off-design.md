@@ -63,3 +63,29 @@ that way. Restoring never depends on the summary.
 
 Anything needing the lid or a cable pulled: the owner checks unplugging the
 monitor mid-session and a docked lid cycle.
+
+## Review rulings (2026-11-13)
+
+An adversarial review found one blocker and six smaller issues; all fixed,
+each with a test:
+
+- **A lock screen is never darkened or moved.** While the screen is locked a
+  display change only ever switches the built-in *on* (when no external is
+  online). The blocker was the sequence unplug, close lid, open lid: the
+  lid-open restore lit the lock screen and the display change it raised
+  dimmed it again.
+- **A dead session never switches the screen off.** After a crash the state
+  file remains; a display change then may bring the built-in back but never
+  switches it off or dims it (checked by whether the session's caffeinate is
+  still running).
+- **Closing the lid locks at once.** The close path restores brightness but
+  does not switch the display on; the open path does.
+- **A cancelled enable switches the display back on.**
+- **A display macOS lists but m1ddc cannot read** (AirPlay, Sidecar, a
+  virtual display) does not switch the built-in off mid-session.
+- **Turning off retries the switch-on once** and tells the user if the
+  display still did not come back, except with the lid shut.
+- **Lid shut:** no attempt to switch the built-in on, and no waiting for it.
+
+With the setting off, behavior is identical to before; the review compared
+the paths and found no difference.
