@@ -23,12 +23,20 @@ final class FakeSystem: SystemControls {
     var lidSleepSucceeds = true
     var lockAvailable = true
     var ownPID: pid_t = 9999
+    /// Whether this macOS can switch a display off at all
+    var canSwitchOff = true
+    /// The built-in display's ID while it is online, nil while it is off
+    /// or the lid is shut
+    var builtinID: UInt32? = 1
+    var switchSucceeds = true
     /// How long startCaffeinate takes, to hold a window open for a second caller
     var caffeinateDelay: TimeInterval = 0
 
     /// Runs inside setBrightness, for asserting what is already on disk by
     /// the time the screen changes
     var onSetBrightness: (() -> Void)?
+    /// Runs inside setDisplay, before the display changes
+    var onSetDisplay: (() -> Void)?
 
     func brightness() -> Double { brightnessValue }
     func setBrightness(_ value: Double) {
@@ -37,6 +45,16 @@ final class FakeSystem: SystemControls {
     }
 
     func isExternalDisplayOnline() -> Bool { externalOnline }
+
+    func canSwitchDisplaysOff() -> Bool { canSwitchOff }
+    func builtinDisplayID() -> UInt32? { builtinID }
+    func setDisplay(_ id: UInt32, enabled: Bool) -> Bool {
+        onSetDisplay?()
+        events.append("setDisplay \(id) \(enabled ? "on" : "off")")
+        guard switchSucceeds else { return false }
+        builtinID = enabled ? id : nil
+        return true
+    }
     func externalLuminance() -> Int? {
         events.append("probeExternalLuminance")
         return externalLuminanceValue

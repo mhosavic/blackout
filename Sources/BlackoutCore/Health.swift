@@ -7,11 +7,14 @@ public struct Health: Equatable {
     public var lidSetupInstalled: Bool
     public var m1ddcInstalled: Bool
     public var lockAvailable: Bool
+    /// Whether this macOS can switch the built-in display off
+    public var builtinOffAvailable: Bool
 
-    public init(lidSetupInstalled: Bool, m1ddcInstalled: Bool, lockAvailable: Bool) {
+    public init(lidSetupInstalled: Bool, m1ddcInstalled: Bool, lockAvailable: Bool, builtinOffAvailable: Bool = true) {
         self.lidSetupInstalled = lidSetupInstalled
         self.m1ddcInstalled = m1ddcInstalled
         self.lockAvailable = lockAvailable
+        self.builtinOffAvailable = builtinOffAvailable
     }
 
     /// Runs `sudo -n -l`, so not for the main thread of anything with a UI
@@ -19,7 +22,8 @@ public struct Health: Equatable {
         return Health(
             lidSetupInstalled: SleepController.isLidSetupInstalled(),
             m1ddcInstalled: ExternalDisplayController.isM1ddcInstalled(),
-            lockAvailable: LidLockController.isLockAvailable()
+            lockAvailable: LidLockController.isLockAvailable(),
+            builtinOffAvailable: DisplaySwitch.isAvailable()
         )
     }
 }

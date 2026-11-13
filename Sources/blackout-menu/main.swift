@@ -121,6 +121,17 @@ ChangeNotifier.observeHotkeyRecorderRequest {
     hotkeyRecorder.show()
 }
 
+// A second safety net for sessions that switch the built-in display off:
+// the session's own watcher brings it back when the monitor is unplugged,
+// and so does this, in case that watcher is gone. Off the main thread —
+// switching a display on waits for it to appear.
+let displayObserver = DisplayChangeObserver {
+    DispatchQueue.global(qos: .userInitiated).async {
+        _ = Session().handleDisplaysChanged()
+    }
+}
+displayObserver.start()
+
 Logger.info("Running, press \(hotkeyManager.current?.display ?? "the hotkey") to toggle blackout")
 
 // Run the application event loop

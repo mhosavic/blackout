@@ -11,6 +11,7 @@ Black out your Mac screen while it keeps working. One hotkey, one menu bar icon,
 - **Global hotkey** - `⌃⌥⌘\` toggles from anywhere, and you can change it to any shortcut you like
 - **Saved settings** - choose what a session does once; the hotkey, the menu and the command all follow it
 - **External monitor aware** - a connected monitor stays lit as your working screen (dimming it too is a setting, requires m1ddc)
+- **Notifications where you can see them** - optionally switches the built-in display off while docked, so the external monitor becomes the main display and shows your notifications
 - **Smart audio muting** - mutes audio, but leaves it on when an external monitor is in use
 - **Prevents sleep** - keeps the Mac awake, even with the lid closed (after one-time `blackout setup-lid`)
 - **Locks on lid close** - closing the lid locks the screen while everything keeps running; unlocking ends blackout
@@ -72,9 +73,10 @@ This session
 ──────────────────────────────────────────
 Settings (apply the next time Blackout turns on)
   Mute audio                              ▸
+  Dim the external display too
+  Turn the built-in display off when docked
 ✓ Keep awake with the lid closed
 ✓ Lock when the lid closes
-  Dim the external display too
 ✓ Show notifications
   Change Hotkey (⌃⌥⌘\)…
 ──────────────────────────────────────────
@@ -94,6 +96,7 @@ Quit Blackout
 |---------|----------------------|--------|---------|
 | Mute audio | `mute` | `auto` (only without an external display), `always`, `never` | `auto` |
 | Dim the external display too | `dim-external` | `on`, `off` | `off` |
+| Turn the built-in display off when docked | `builtin-off` | `on`, `off` | `off` |
 | Keep awake with the lid closed | `lid` | `on`, `off` | `on` |
 | Lock when the lid closes | `lock` | `on`, `off` | `on` |
 | Show notifications | `notifications` | `on`, `off` | `on` |
@@ -106,6 +109,16 @@ blackout config mute never      # change one
 ```
 
 They live in `~/.blackout/config.json`. A setting changed while blackout is on takes effect the next time it turns on.
+
+### Turning the built-in display off when docked
+
+With the lid open and an external monitor in use, a dimmed built-in display is still the Mac's main display, and macOS shows notification banners on the main display — so they land on a black screen. Turn on "Turn the built-in display off when docked" (`blackout config builtin-off on`) and blackout switches the built-in display off instead of dimming it. To macOS that looks like a closed lid:
+
+- the external monitor becomes the main display and shows notifications, the Dock and new windows;
+- windows that were on the built-in display move to the external one, and move back when blackout turns off;
+- the keyboard, trackpad, camera and Touch ID keep working.
+
+It only applies while an external monitor is in use, never to the last remaining screen. If you unplug the monitor while blackout is on, the built-in display comes back on, dimmed. It relies on an undocumented macOS call; if a macOS update removes it, blackout dims the display as before and the menu says so. If the built-in display ever stays off, close and reopen the lid.
 
 ### Changing the hotkey
 
@@ -152,7 +165,7 @@ An argument blackout does not recognize is an error; it never falls through to a
 ### What happens when blackout turns on
 
 1. Your current brightness and volume are saved
-2. The built-in display dims to 0%
+2. The built-in display dims to 0% (or is switched off, with "Turn the built-in display off when docked" and an external monitor in use)
 3. External monitors stay untouched — they remain your working screen (unless "Dim the external display too" is on; requires m1ddc)
 4. Audio is muted (left on when an external monitor is in use, unless set to always or never). If you had already muted it yourself, blackout leaves it alone and does not un-mute it afterwards.
 5. `caffeinate` prevents idle sleep
@@ -280,10 +293,11 @@ blackout setup-lid
 
 ### A second `blackout` process is running
 
-That is the lid watcher (`blackout --lid-watch`). It exists only while blackout
-is active and exits when you turn blackout off — or when you unlock after a
-lid close, which ends the session. Turn it off with the "Lock when the lid
-closes" setting.
+That is the session watcher (`blackout --lid-watch`). It exists only while
+blackout is active and exits when you turn blackout off — or when you unlock
+after a lid close, which ends the session. It runs when "Lock when the lid
+closes" is on, and also when the built-in display is switched off, where it
+brings the display back if the monitor is unplugged.
 
 ### The lock screen is black after opening the lid
 

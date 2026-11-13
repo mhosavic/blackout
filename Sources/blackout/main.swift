@@ -27,6 +27,8 @@ Options, for this run only (the saved settings apply otherwise):
 Settings (blackout config <key> <value>):
   mute           auto|always|never   auto mutes only without an external display
   dim-external   on|off
+  builtin-off    on|off              docked, switch the built-in display off instead of
+                                     dimming it, so notifications show on the external one
   lid            on|off
   lock           on|off
   notifications  on|off
@@ -186,7 +188,8 @@ func watchLid() -> Never {
     let watching = LidLockController.watch(
         onLidClose: { act(session.handleLidClose()) },
         onLidOpen: { screenLocked in act(session.handleLidOpen(screenLocked: screenLocked)) },
-        onUnlock: { act(session.handleUnlock(notify: Settings.load().notifications)) }
+        onUnlock: { act(session.handleUnlock(notify: Settings.load().notifications)) },
+        onDisplaysChanged: { act(session.handleDisplaysChanged()) }
     )
     exit(watching ? 0 : 1)
 }

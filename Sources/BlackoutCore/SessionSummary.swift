@@ -41,15 +41,25 @@ public struct SessionSummary: Codable, Equatable {
         case watcherFailed
     }
 
+    public enum Builtin: String, Codable {
+        /// Switched off, so the external display is the main one
+        case off
+        /// Asked to switch it off, but macOS would not; dimmed instead
+        case offUnavailable
+    }
+
     public var audio: Audio
     public var external: External
     public var lidSleep: LidSleep
     public var lidLock: LidLock
+    /// nil means dimmed, which is all a session did before this existed
+    public var builtin: Builtin?
 
-    public init(audio: Audio, external: External, lidSleep: LidSleep, lidLock: LidLock) {
+    public init(audio: Audio, external: External, lidSleep: LidSleep, lidLock: LidLock, builtin: Builtin? = nil) {
         self.audio = audio
         self.external = external
         self.lidSleep = lidSleep
         self.lidLock = lidLock
+        self.builtin = builtin
     }
 }

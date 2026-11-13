@@ -49,6 +49,19 @@ extension FileBackedTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: tempDir.path) == ["state.json"])
     }
 
+    @Test func builtinOffKeysRoundTrip() {
+        let state = BlackoutState(
+            originalBrightness: 0.5, originalVolume: nil, externalLuminance: nil, caffeinatePID: 1,
+            sleepDisabled: true, lidWatcherPID: 2, activatedAt: Date(), summary: nil,
+            builtinOff: true, builtinDisplayID: 1, lidLockArmed: false)
+        #expect(StateManager.save(state))
+
+        let loaded = StateManager.loadState()
+        #expect(loaded?.builtinOff == true)
+        #expect(loaded?.builtinDisplayID == 1)
+        #expect(loaded?.lidLockArmed == false)
+    }
+
     @Test func summaryRoundTrips() {
         let summary = SessionSummary(audio: .leftOnExternalDisplay, external: .leftOn, lidSleep: .disabled, lidLock: .armed)
         #expect(StateManager.saveState(brightness: 0.5, volume: nil, externalLuminance: nil, pid: 1, sleepDisabled: true, lidWatcherPID: 2, summary: summary))

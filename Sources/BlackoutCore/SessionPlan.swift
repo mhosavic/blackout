@@ -9,12 +9,15 @@ public struct SystemProbe: Equatable {
     public var externalLuminance: Int?
     public var sleepAlreadyDisabled: Bool
     public var lockAvailable: Bool
+    /// Whether this macOS can switch a display off
+    public var builtinOffAvailable: Bool
 
-    public init(externalOnline: Bool, externalLuminance: Int?, sleepAlreadyDisabled: Bool, lockAvailable: Bool) {
+    public init(externalOnline: Bool, externalLuminance: Int?, sleepAlreadyDisabled: Bool, lockAvailable: Bool, builtinOffAvailable: Bool = true) {
         self.externalOnline = externalOnline
         self.externalLuminance = externalLuminance
         self.sleepAlreadyDisabled = sleepAlreadyDisabled
         self.lockAvailable = lockAvailable
+        self.builtinOffAvailable = builtinOffAvailable
     }
 }
 
@@ -27,6 +30,8 @@ public struct SessionPlan: Equatable {
     public let dimExternal: Bool
     public let disableLidSleep: Bool
     public let armLidLock: Bool
+    /// Switch the built-in display off instead of dimming it
+    public let turnBuiltinOff: Bool
     /// The outcome if every step succeeds; carrying it out can still
     /// downgrade lidSleep (setup missing) and lidLock (watcher failed)
     public let summary: SessionSummary
@@ -69,12 +74,21 @@ public struct SessionPlan: Equatable {
             lidLock = probe.lockAvailable ? .armed : .unavailable
         }
 
+        // Only with an external display left on: it is the screen that
+        // takes over. With nothing else in use the built-in is the last
+        // screen, and in "dim everything" mode nothing is meant to stay lit.
+        var builtin: SessionSummary.Builtin?
+        if settings.builtinOff && external == .leftOn {
+            builtin = probe.builtinOffAvailable ? .off : .offUnavailable
+        }
+
         return SessionPlan(
             muteAudio: audio == .muted,
             dimExternal: external == .dimmed,
             disableLidSleep: lidSleep == .disabled,
             armLidLock: lidLock == .armed,
-            summary: SessionSummary(audio: audio, external: external, lidSleep: lidSleep, lidLock: lidLock)
+            turnBuiltinOff: builtin == .off,
+            summary: SessionSummary(audio: audio, external: external, lidSleep: lidSleep, lidLock: lidLock, builtin: builtin)
         )
     }
 }

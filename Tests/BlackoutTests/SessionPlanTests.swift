@@ -73,6 +73,46 @@ struct SessionPlanTests {
         #expect(plan.summary.audio == .muted)
     }
 
+    // MARK: - Built-in display
+
+    @Test func builtinIsDimmedByDefault() {
+        for probe in [alone, docked] {
+            let plan = plan(probe)
+            #expect(!plan.turnBuiltinOff)
+            #expect(plan.summary.builtin == nil)
+        }
+    }
+
+    @Test func builtinGoesOffWhenDockedAndAsked() {
+        let plan = plan(docked) { $0.builtinOff = true }
+        #expect(plan.turnBuiltinOff)
+        #expect(plan.summary.builtin == .off)
+    }
+
+    /// Switching off the only screen would leave the Mac with none
+    @Test func builtinStaysOnWithoutAnExternalInUse() {
+        #expect(!plan(alone) { $0.builtinOff = true }.turnBuiltinOff)
+
+        var unreachable = docked
+        unreachable.externalLuminance = nil
+        #expect(!plan(unreachable) { $0.builtinOff = true }.turnBuiltinOff)
+    }
+
+    /// "Dim everything" mode keeps its old behavior: both screens dimmed
+    @Test func builtinIsDimmedWhenTheExternalIsDimmedToo() {
+        let plan = plan(docked) { $0.builtinOff = true; $0.dimExternal = true }
+        #expect(!plan.turnBuiltinOff)
+        #expect(plan.summary.builtin == nil)
+    }
+
+    @Test func builtinIsDimmedWhenMacOSCannotSwitchItOff() {
+        var probe = docked
+        probe.builtinOffAvailable = false
+        let plan = plan(probe) { $0.builtinOff = true }
+        #expect(!plan.turnBuiltinOff)
+        #expect(plan.summary.builtin == .offUnavailable)
+    }
+
     // MARK: - Lid sleep
 
     @Test func lidSleepOffBySetting() {

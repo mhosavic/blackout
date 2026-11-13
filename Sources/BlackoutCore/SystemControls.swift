@@ -15,6 +15,14 @@ public protocol SystemControls {
     func setBrightness(_ value: Double)
 
     func isExternalDisplayOnline() -> Bool
+
+    /// Whether this macOS can switch a display off at all
+    func canSwitchDisplaysOff() -> Bool
+    /// The built-in display's ID while it is online; nil while it is
+    /// switched off or the lid is shut
+    func builtinDisplayID() -> UInt32?
+    /// Switch a display off or on; returns whether it ended up as asked
+    func setDisplay(_ id: UInt32, enabled: Bool) -> Bool
     func externalLuminance() -> Int?
     func setExternalLuminance(_ level: Int)
 
@@ -51,6 +59,10 @@ public struct LiveSystem: SystemControls {
     public func setBrightness(_ value: Double) { BrightnessController.setBrightness(value) }
 
     public func isExternalDisplayOnline() -> Bool { ExternalDisplayController.isExternalDisplayOnline() }
+
+    public func canSwitchDisplaysOff() -> Bool { DisplaySwitch.isAvailable() }
+    public func builtinDisplayID() -> UInt32? { DisplaySwitch.builtinDisplayID() }
+    public func setDisplay(_ id: UInt32, enabled: Bool) -> Bool { DisplaySwitch.setEnabled(id, enabled) }
     public func externalLuminance() -> Int? { ExternalDisplayController.getLuminance() }
     public func setExternalLuminance(_ level: Int) { ExternalDisplayController.setLuminance(level) }
 

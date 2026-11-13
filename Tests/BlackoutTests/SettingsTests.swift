@@ -34,6 +34,7 @@ extension FileBackedTests {
         let settings = Settings()
         #expect(settings.muteAudio == .auto)
         #expect(settings.dimExternal == false)
+        #expect(settings.builtinOff == false)
         #expect(settings.keepAwakeLidClosed == true)
         #expect(settings.lockOnLidClose == true)
         #expect(settings.notifications == true)
@@ -70,6 +71,7 @@ extension FileBackedTests {
         var settings = Settings()
         settings.muteAudio = .never
         settings.dimExternal = true
+        settings.builtinOff = true
         settings.keepAwakeLidClosed = false
         settings.lockOnLidClose = false
         settings.notifications = false

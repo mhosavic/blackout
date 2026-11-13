@@ -16,6 +16,9 @@ public struct Settings: Equatable {
 
     public var muteAudio: MutePolicy = .auto
     public var dimExternal = false
+    /// Docked, switch the built-in display off instead of dimming it, so
+    /// the external one becomes the main display and shows notifications
+    public var builtinOff = false
     public var keepAwakeLidClosed = true
     public var lockOnLidClose = true
     public var notifications = true
@@ -50,6 +53,7 @@ public struct Settings: Equatable {
             return number.boolValue
         }
         settings.dimExternal = bool("dimExternal") ?? settings.dimExternal
+        settings.builtinOff = bool("builtinOff") ?? settings.builtinOff
         settings.keepAwakeLidClosed = bool("keepAwakeLidClosed") ?? settings.keepAwakeLidClosed
         settings.lockOnLidClose = bool("lockOnLidClose") ?? settings.lockOnLidClose
         settings.notifications = bool("notifications") ?? settings.notifications
@@ -70,6 +74,7 @@ public struct Settings: Equatable {
         let json: [String: Any] = [
             "muteAudio": muteAudio.rawValue,
             "dimExternal": dimExternal,
+            "builtinOff": builtinOff,
             "keepAwakeLidClosed": keepAwakeLidClosed,
             "lockOnLidClose": lockOnLidClose,
             "notifications": notifications,
@@ -94,7 +99,7 @@ public struct Settings: Equatable {
     // MARK: - Keys
 
     /// The names `blackout config` and the menu use, in display order
-    public static let keys = ["mute", "dim-external", "lid", "lock", "notifications"]
+    public static let keys = ["mute", "dim-external", "builtin-off", "lid", "lock", "notifications"]
 
     /// Change one setting by its key. Returns false, changing nothing, for an
     /// unknown key or a value that key does not accept.
@@ -114,6 +119,7 @@ public struct Settings: Equatable {
 
         switch key {
         case "dim-external": dimExternal = isOn
+        case "builtin-off": builtinOff = isOn
         case "lid": keepAwakeLidClosed = isOn
         case "lock": lockOnLidClose = isOn
         case "notifications": notifications = isOn
@@ -128,6 +134,7 @@ public struct Settings: Equatable {
         switch key {
         case "mute": return muteAudio.rawValue
         case "dim-external": return word(dimExternal)
+        case "builtin-off": return word(builtinOff)
         case "lid": return word(keepAwakeLidClosed)
         case "lock": return word(lockOnLidClose)
         case "notifications": return word(notifications)

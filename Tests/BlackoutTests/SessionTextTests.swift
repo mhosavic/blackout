@@ -49,6 +49,20 @@ struct SessionTextTests {
         ])
     }
 
+    @Test func builtinLines() {
+        let off = SessionSummary(audio: .leftOnExternalDisplay, external: .leftOn, lidSleep: .disabled, lidLock: .armed, builtin: .off)
+        #expect(SessionText.sessionLines(state: state(summary: off), externalOnline: true)[0]
+            == "Built-in display off (windows and notifications are on the external display)")
+
+        // The monitor was unplugged since: the built-in is back on, dimmed
+        #expect(SessionText.sessionLines(state: state(summary: off), externalOnline: false)[0]
+            == "Built-in display dimmed (was 62%)")
+
+        let unavailable = SessionSummary(audio: .leftOnExternalDisplay, external: .leftOn, lidSleep: .disabled, lidLock: .armed, builtin: .offUnavailable)
+        #expect(SessionText.sessionLines(state: state(summary: unavailable), externalOnline: true)[0]
+            == "Built-in display dimmed (was 62%); it could not be switched off")
+    }
+
     @Test func externalLines() {
         #expect(lines(external: .dimmed, externalLuminance: 40, externalOnline: true)[1] == "External display dimmed (was 40%)")
         #expect(lines(external: .leftOn, externalOnline: true)[1] == "External display left on")
@@ -119,6 +133,7 @@ struct SessionTextTests {
         var settings = Settings()
         #expect(SessionText.title(forSetting: "mute") == "Mute audio")
         #expect(SessionText.title(forSetting: "dim-external") == "Dim the external display too")
+        #expect(SessionText.title(forSetting: "builtin-off") == "Turn the built-in display off when docked")
         #expect(SessionText.title(forSetting: "lid") == "Keep awake with the lid closed")
         #expect(SessionText.title(forSetting: "lock") == "Lock when the lid closes")
         #expect(SessionText.title(forSetting: "notifications") == "Show notifications")

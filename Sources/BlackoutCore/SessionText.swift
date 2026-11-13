@@ -25,10 +25,21 @@ public enum SessionText {
     /// line: that decision is made when the lid closes, not when the session
     /// started.
     public static func sessionLines(state: BlackoutState, externalOnline: Bool) -> [String] {
-        var lines = ["Built-in display dimmed (was \(percent(state.originalBrightness)))"]
+        let dimmed = "Built-in display dimmed (was \(percent(state.originalBrightness)))"
 
         guard let summary = state.summary else {
-            return lines + legacyLines(state: state, externalOnline: externalOnline)
+            return [dimmed] + legacyLines(state: state, externalOnline: externalOnline)
+        }
+
+        var lines: [String]
+        switch summary.builtin {
+        case .none: lines = [dimmed]
+        // Off only while an external display is online; unplugged, the
+        // session brings the built-in back on, dimmed
+        case .off: lines = externalOnline
+            ? ["Built-in display off (windows and notifications are on the external display)"]
+            : [dimmed]
+        case .offUnavailable: lines = [dimmed + "; it could not be switched off"]
         }
 
         switch summary.external {
@@ -107,6 +118,7 @@ public enum SessionText {
         switch key {
         case "mute": return "Mute audio"
         case "dim-external": return "Dim the external display too"
+        case "builtin-off": return "Turn the built-in display off when docked"
         case "lid": return "Keep awake with the lid closed"
         case "lock": return "Lock when the lid closes"
         case "notifications": return "Show notifications"

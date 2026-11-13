@@ -113,12 +113,16 @@ public struct LidLockController {
     public static func watch(
         onLidClose: @escaping () -> Void,
         onLidOpen: @escaping (_ screenLocked: Bool) -> Void,
-        onUnlock: @escaping () -> Void
+        onUnlock: @escaping () -> Void,
+        onDisplaysChanged: @escaping () -> Void
     ) -> Bool {
         let watcher = LidWatcher(onLidClose: onLidClose, onLidOpen: onLidOpen, onUnlock: onUnlock)
         guard watcher.start() else { return false }
 
-        withExtendedLifetime(watcher) {
+        let displays = DisplayChangeObserver(handler: onDisplaysChanged)
+        displays.start()
+
+        withExtendedLifetime((watcher, displays)) {
             CFRunLoopRun()
         }
         return true

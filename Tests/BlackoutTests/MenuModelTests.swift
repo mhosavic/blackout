@@ -125,7 +125,7 @@ struct MenuModelTests {
                 }
             }
         }
-        #expect(actions.count == 7)
+        #expect(actions.count == 8)
         for action in actions {
             guard case .set(let key, let value) = action else {
                 Issue.record("settings item carries \(action)")
@@ -158,6 +158,13 @@ struct MenuModelTests {
         let health = Health(lidSetupInstalled: true, m1ddcInstalled: false, lockAvailable: true)
         #expect(warnings(menu(health: health)).isEmpty)
         #expect(warnings(menu(health: health) { $0.dimExternal = true }) == ["m1ddc is not installed: external displays cannot be dimmed"])
+    }
+
+    @Test func warnsWhenTheBuiltinCannotBeSwitchedOff() {
+        let health = Health(lidSetupInstalled: true, m1ddcInstalled: true, lockAvailable: true, builtinOffAvailable: false)
+        #expect(warnings(menu(health: health)).isEmpty)
+        #expect(warnings(menu(health: health) { $0.builtinOff = true })
+            == ["This macOS cannot switch the built-in display off: it is dimmed instead"])
     }
 
     @Test func warnsWhenLockCallMissing() {

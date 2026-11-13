@@ -299,6 +299,147 @@ extension FileBackedTests {
         #expect(!StateManager.hasState())
     }
 
+    // MARK: - Built-in display off
+
+    private func enableDockedWithBuiltinOff(_ change: (inout Settings) -> Void = { _ in }) -> Session.EnableResult {
+        system.externalOnline = true
+        system.externalLuminanceValue = 80
+        return session.enable(settings: settings { $0.builtinOff = true; change(&$0) })
+    }
+
+    /// Docked with the setting on: the built-in is switched off, not dimmed.
+    /// Its ID is on disk before it goes off — afterwards it is no longer
+    /// listed, and without the ID it could never be switched back on.
+    @Test func enableSwitchesTheBuiltinOffInsteadOfDimming() {
+        var idOnDiskWhenSwitchedOff: UInt32?
+        system.onSetDisplay = { idOnDiskWhenSwitchedOff = StateManager.loadState()?.builtinDisplayID }
+
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+
+        #expect(system.events.contains("setDisplay 1 off"))
+        #expect(!system.events.contains { $0.hasPrefix("setBrightness") })
+        #expect(idOnDiskWhenSwitchedOff == 1)
+        let state = StateManager.loadState()
+        #expect(state?.builtinOff == true)
+        #expect(state?.summary?.builtin == .off)
+        #expect(state?.originalBrightness == 0.62)
+    }
+
+    /// The call can fail on a macOS that changed it. The session must still
+    /// go dark, the old way, and say what happened.
+    @Test func enableFallsBackToDimmingWhenTheSwitchFails() {
+        system.switchSucceeds = false
+
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+
+        #expect(system.events.contains("setBrightness 0.0"))
+        #expect(StateManager.loadState()?.summary?.builtin == .offUnavailable)
+    }
+
+    /// In this mode the watcher is what brings the screen back when the
+    /// monitor is unplugged, so it runs even with the lid lock switched off
+    @Test func builtinOffStartsTheWatcherEvenWithTheLockOff() {
+        #expect(isEnabled(enableDockedWithBuiltinOff { $0.lockOnLidClose = false }))
+
+        #expect(system.events.contains("startWatcher"))
+        let state = StateManager.loadState()
+        #expect(state?.lidWatcherPID == 2002)
+        #expect(state?.lidLockArmed == false)
+        #expect(state?.summary?.lidLock == .offBySetting)
+    }
+
+    @Test func disableSwitchesTheBuiltinBackOnBeforeRestoringBrightness() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.events = []
+
+        guard case .disabled = session.disable(notify: false) else {
+            Issue.record("disable should succeed")
+            return
+        }
+        let on = system.events.firstIndex(of: "setDisplay 1 on")
+        let brightness = system.events.firstIndex(of: "setBrightness 0.62")
+        #expect(on != nil && brightness != nil)
+        if let on, let brightness { #expect(on < brightness) }
+    }
+
+    /// The monitor is unplugged while the built-in is off: without this the
+    /// Mac has no screen at all. It comes back on, dimmed — blackout is
+    /// still on, as it would be on a laptop alone.
+    @Test func unpluggingTheMonitorBringsTheBuiltinBackDimmed() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.events = []
+        system.externalOnline = false
+
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        #expect(system.events == ["setDisplay 1 on", "setBrightness 0.0"])
+    }
+
+    @Test func pluggingTheMonitorBackInSwitchesTheBuiltinOffAgain() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.externalOnline = false
+        _ = session.handleDisplaysChanged()
+        system.events = []
+        system.externalOnline = true
+
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        #expect(system.events == ["setDisplay 1 off"])
+    }
+
+    /// Switching the display off itself raises a display-change event; that
+    /// must settle, not loop
+    @Test func aDisplayChangeWithNothingToCorrectDoesNothing() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.events = []
+
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        #expect(system.events.isEmpty)
+    }
+
+    @Test func displayChangesAreIgnoredOutsideThisMode() {
+        saveState()
+        system.externalOnline = true
+
+        #expect(session.handleDisplaysChanged() == .keepWatching)
+        #expect(system.events.isEmpty)
+    }
+
+    /// Blackout turned on with the lid already shut: there was no built-in
+    /// to switch off then. When the lid opens it is, and its ID is recorded.
+    @Test func lidOpenedWhileDockedSwitchesTheBuiltinOff() {
+        system.builtinID = nil
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        #expect(StateManager.loadState()?.builtinDisplayID == nil)
+        system.events = []
+        system.builtinID = 1
+
+        #expect(session.handleLidOpen(screenLocked: false) == .keepWatching)
+        #expect(system.events == ["setDisplay 1 off"])
+        #expect(StateManager.loadState()?.builtinDisplayID == 1)
+    }
+
+    /// A lock screen on a display that is switched off cannot be unlocked
+    @Test func lidOpenedOntoLockScreenSwitchesTheBuiltinOn() {
+        #expect(isEnabled(enableDockedWithBuiltinOff()))
+        system.events = []
+
+        #expect(session.handleLidOpen(screenLocked: true) == .keepWatching)
+        #expect(system.events == ["setDisplay 1 on", "setBrightness 0.62"])
+    }
+
+    /// With the lock setting off, a watcher that exists only for this mode
+    /// must behave as if there were none: no lock, and an unlock (after a
+    /// manual ⌃⌘Q) does not end the session
+    @Test func watcherWithoutTheLockArmedNeitherLocksNorEndsTheSession() {
+        #expect(isEnabled(enableDockedWithBuiltinOff { $0.lockOnLidClose = false }))
+        system.externalOnline = false
+        system.events = []
+
+        #expect(session.handleLidClose() == .keepWatching)
+        #expect(!system.events.contains("lockScreen"))
+        #expect(session.handleUnlock(notify: true) == .keepWatching)
+        #expect(StateManager.hasState())
+    }
+
     // MARK: - Disable
 
     @Test func disableRestoresEverythingTheStateNames() {

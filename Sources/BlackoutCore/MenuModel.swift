@@ -97,6 +97,9 @@ public enum MenuModel {
         if settings.dimExternal && !health.m1ddcInstalled {
             warnings.append("m1ddc is not installed: external displays cannot be dimmed")
         }
+        if settings.builtinOff && !health.builtinOffAvailable {
+            warnings.append("This macOS cannot switch the built-in display off: it is dimmed instead")
+        }
         if settings.lockOnLidClose && !health.lockAvailable {
             warnings.append("macOS lock call missing: the lid cannot lock the screen")
         }

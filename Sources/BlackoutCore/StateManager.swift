@@ -10,9 +10,22 @@ public struct BlackoutState: Codable {
     public let lidWatcherPID: Int32?
     public let activatedAt: Date
     /// What the session decided and why — for display only, see init(from:)
-    public let summary: SessionSummary?
+    public var summary: SessionSummary?
+    /// The session switches the built-in display off while an external one
+    /// is online, instead of dimming it
+    public var builtinOff: Bool?
+    /// The display to switch back on. Recorded before it is switched off:
+    /// afterwards macOS no longer lists it, so it could not be found again.
+    public var builtinDisplayID: UInt32?
+    /// Whether the watcher locks on lid close and ends the session on
+    /// unlock. nil in files from before the watcher had any other job,
+    /// when a watcher always meant the lock was armed.
+    public let lidLockArmed: Bool?
 
-    public init(originalBrightness: Double, originalVolume: Int?, externalLuminance: Int?, caffeinatePID: Int32, sleepDisabled: Bool?, lidWatcherPID: Int32?, activatedAt: Date, summary: SessionSummary?) {
+    public init(originalBrightness: Double, originalVolume: Int?, externalLuminance: Int?, caffeinatePID: Int32, sleepDisabled: Bool?, lidWatcherPID: Int32?, activatedAt: Date, summary: SessionSummary?, builtinOff: Bool? = nil, builtinDisplayID: UInt32? = nil, lidLockArmed: Bool? = nil) {
+        self.builtinOff = builtinOff
+        self.builtinDisplayID = builtinDisplayID
+        self.lidLockArmed = lidLockArmed
         self.originalBrightness = originalBrightness
         self.originalVolume = originalVolume
         self.externalLuminance = externalLuminance
@@ -35,6 +48,9 @@ public struct BlackoutState: Codable {
         // try? on purpose: a summary this build cannot read (written by a
         // newer one, or damaged) must never make the state unrestorable
         summary = try? values.decodeIfPresent(SessionSummary.self, forKey: .summary)
+        builtinOff = try values.decodeIfPresent(Bool.self, forKey: .builtinOff)
+        builtinDisplayID = try values.decodeIfPresent(UInt32.self, forKey: .builtinDisplayID)
+        lidLockArmed = try values.decodeIfPresent(Bool.self, forKey: .lidLockArmed)
     }
 }
 
