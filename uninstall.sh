@@ -3,11 +3,11 @@
 
 echo "Uninstalling blackout..."
 
-# Restore settings first if a session is active (toggles blackout off,
+# Restore settings first if a session is active (turns blackout off,
 # bringing back brightness, volume, and normal sleep)
 if [ -f ~/.blackout.state ] && command -v blackout >/dev/null 2>&1; then
     echo "Restoring active blackout session..."
-    blackout || true
+    blackout off || true
 fi
 
 # Fallback: stop any caffeinate instance the toggle did not clean up
@@ -40,23 +40,28 @@ if [ -f /etc/sudoers.d/blackout ]; then
     sudo rm -f /etc/sudoers.d/blackout
 fi
 
-# Stop and remove daemon
+# Stop and remove the menu bar app
 LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.blackout.daemon.plist"
 if [ -f "$LAUNCH_AGENT" ]; then
-    echo "Stopping daemon..."
+    echo "Stopping the menu bar app..."
     launchctl unload "$LAUNCH_AGENT" 2>/dev/null
     rm -f "$LAUNCH_AGENT"
     echo "Removed LaunchAgent"
 fi
 
-# Remove daemon directory
+if [ -d ~/Applications/Blackout.app ]; then
+    rm -rf ~/Applications/Blackout.app
+    echo "Removed ~/Applications/Blackout.app"
+fi
+
+# Remove settings, log and runtime files
 if [ -d ~/.blackout ]; then
     rm -rf ~/.blackout
     echo "Removed ~/.blackout directory"
 fi
 
-# Remove binary
-if [ -f ~/bin/blackout ]; then
+# Remove the command (a symlink into the app since 2.0, a copied binary before)
+if [ -e ~/bin/blackout ] || [ -L ~/bin/blackout ]; then
     rm -f ~/bin/blackout
     echo "Removed ~/bin/blackout"
 fi

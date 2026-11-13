@@ -123,7 +123,9 @@ func showStatus() {
     }
 
     print("")
-    DaemonController.status()
+    for line in AppInstaller.statusLines() {
+        print(line)
+    }
 }
 
 func setConfig(key: String, value: String) {
@@ -190,9 +192,9 @@ case .success(let command):
     case .configSet(let key, let value):
         setConfig(key: key, value: value)
     case .install:
-        DaemonController.install()
+        AppInstaller.install()
     case .uninstall:
-        DaemonController.uninstall()
+        AppInstaller.uninstall()
     case .setupLid:
         SleepController.setupLid()
     case .lidWatch:

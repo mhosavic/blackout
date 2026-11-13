@@ -8,7 +8,7 @@ public struct PathManager {
         FileManager.default.homeDirectoryForCurrentUser
     }
 
-    /// ~/.blackout/ directory for daemon files
+    /// ~/.blackout/ directory for settings and runtime files
     public static var blackoutDirectory: URL {
         homeDirectory.appendingPathComponent(".blackout")
     }
@@ -18,10 +18,33 @@ public struct PathManager {
         homeDirectory.appendingPathComponent("Library/LaunchAgents")
     }
 
-    // MARK: - Daemon Files
+    // MARK: - Installed App
 
-    /// ~/.blackout/blackout-daemon binary
-    public static var daemonBinary: URL {
+    /// ~/Applications/Blackout.app — per-user, so installing needs no sudo
+    public static var appBundle: URL {
+        homeDirectory.appendingPathComponent("Applications/Blackout.app")
+    }
+
+    /// The menu bar app inside the bundle; what the LaunchAgent starts
+    public static var installedMenuApp: URL {
+        appBundle.appendingPathComponent("Contents/MacOS/blackout-menu")
+    }
+
+    /// The CLI inside the bundle, beside the app so the two stay one version
+    public static var installedCLI: URL {
+        appBundle.appendingPathComponent("Contents/MacOS/blackout")
+    }
+
+    /// ~/bin/blackout — a symlink to the bundled CLI
+    public static var cliLink: URL {
+        homeDirectory.appendingPathComponent("bin/blackout")
+    }
+
+    // MARK: - Runtime Files
+
+    /// ~/.blackout/blackout-daemon — the hotkey daemon from before 2.0,
+    /// removed on install
+    public static var legacyDaemonBinary: URL {
         blackoutDirectory.appendingPathComponent("blackout-daemon")
     }
 
