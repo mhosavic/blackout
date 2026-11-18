@@ -2,27 +2,27 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>
-    <string>Blackout</string>
-    <key>CFBundleDisplayName</key>
-    <string>Blackout</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.blackout.app</string>
-    <key>CFBundleExecutable</key>
-    <string>blackout-menu</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>2.0</string>
-    <key>CFBundleVersion</key>
-    <string>2</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>BlackoutReleaseFeed</key>
-    <string>https://api.github.com/repos/mhosavic/blackout/releases/latest</string>
+	<key>BlackoutReleaseFeed</key>
+	<string>https://api.github.com/repos/mhosavic/blackout/releases/latest</string>
+	<key>CFBundleDisplayName</key>
+	<string>Blackout</string>
+	<key>CFBundleExecutable</key>
+	<string>blackout-menu</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.blackout.app</string>
+	<key>CFBundleName</key>
+	<string>Blackout</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2.1</string>
+	<key>CFBundleVersion</key>
+	<string>2.1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
 </dict>
 </plist>
