@@ -16,28 +16,45 @@ Black out your Mac screen while it keeps working. One hotkey, one menu bar icon,
 - **Prevents sleep** - keeps the Mac awake, even with the lid closed (after one-time `blackout setup-lid`)
 - **Locks on lid close** - closing the lid locks the screen while everything keeps running; unlocking ends blackout
 - **Restores everything** - brightness, volume and sleep come back exactly as they were; audio you had muted yourself stays muted
+- **Updates itself** - checks for a new release once a day; one click in the menu installs it
 
 ## Requirements
 
 - macOS 14.0 (Sonoma) or later, Apple Silicon
-- Xcode Command Line Tools (`xcode-select --install`)
 - Optional: [m1ddc](https://github.com/waydabber/m1ddc) for external monitor support (`brew install m1ddc`)
+- To build from source: Xcode Command Line Tools (`xcode-select --install`)
 
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/blackout.git
-cd blackout
-make install
+curl -fsSL https://raw.githubusercontent.com/mhosavic/blackout/main/install.sh | bash
 ```
 
-`make install` builds a release, assembles `Blackout.app` (the menu bar app and the `blackout` command together), and:
+This downloads `Blackout.app` (the menu bar app and the `blackout` command together) from the latest release, and:
 
 - installs it to `~/Applications/Blackout.app`
 - links the command at `~/bin/blackout` (add `~/bin` to your `PATH` to use it from a terminal)
 - registers a LaunchAgent so the menu bar app starts at login
 
-Run it again after pulling changes; it replaces the previous install in place.
+Running it again replaces the previous install in place.
+
+### From source
+
+```bash
+git clone https://github.com/mhosavic/blackout.git
+cd blackout
+make install
+```
+
+`make install` builds a release, assembles the same `Blackout.app` and installs it the same way. Run it again after pulling changes.
+
+### Updates
+
+The menu shows the version you run. Once a day Blackout asks GitHub for the latest release; when it is newer, the menu offers **Update to 2.2** (or whichever version). Choosing it downloads the release, checks it is that version with an intact signature, and installs it the way `install.sh` does: the menu bar icon disappears for a moment and comes back as the new version.
+
+**Check for Updates…** asks right away. From a terminal, `blackout update` does the same check and installs a newer release if there is one.
+
+Blackout is signed ad hoc, not with an Apple Developer ID. That is why it installs with `curl` rather than a downloaded `.app`: macOS refuses to open an app a browser downloaded unless Apple has notarized it (System Settings can still allow it), but it does not mark files fetched with `curl` or by Blackout itself. It needs no privacy permissions, so nothing has to be granted again after an update.
 
 ### Enable lid-close sleep prevention (optional, one-time)
 
@@ -80,6 +97,8 @@ Settings (apply the next time Blackout turns on)
 ✓ Show notifications
   Change Hotkey (⌃⌥⌘\)…
 ──────────────────────────────────────────
+Blackout 2.1 · up to date
+Check for Updates…
 Open Log
 Quit Blackout
 ```
@@ -88,6 +107,7 @@ Quit Blackout
 - **Settings** are saved and apply the next time blackout turns on. They are the same settings `blackout config` shows.
 - A warning line appears when a setting is on but cannot work (for example the lid setup has not been run).
 - **Change Hotkey** opens a small window: press the shortcut you want.
+- **Check for Updates…** becomes **Update to …** when a newer release is out (see [Updates](#updates)).
 - **Quit Blackout** also stops the hotkey until the next login.
 
 ## Settings
@@ -148,6 +168,7 @@ blackout status     # what is on, the settings, the setup
 | `blackout config [<key> <value>]` | Show the saved settings, or change one |
 | `blackout hotkey [default]` | Pick a new global shortcut, or go back to the default |
 | `blackout setup-lid` | One-time setup for lid-close sleep prevention |
+| `blackout update` | Install the latest release, if it is newer than the one running |
 | `blackout install` / `blackout uninstall` | Register or remove the menu bar app (use `make install`) |
 | `blackout help` | Show help |
 
@@ -221,6 +242,7 @@ The menu bar app holds no state of its own: the icon and the menu are drawn from
 | `~/.blackout/daemon.log` | Menu bar app log, including how long each toggle took |
 | `~/.blackout/daemon.pid` | Menu bar app process ID |
 | `~/.blackout/lock` | Held while a session starts or ends |
+| `~/.blackout/update/` | The last release downloaded by the updater |
 | `~/Library/LaunchAgents/com.blackout.daemon.plist` | LaunchAgent that starts the app at login |
 | `/etc/sudoers.d/blackout` | Passwordless rule for `pmset disablesleep` (from `blackout setup-lid`) |
 
@@ -233,10 +255,7 @@ The menu bar app holds no state of its own: the icon and the menu are drawn from
    blackout status
    ```
 
-2. If it is not running, reinstall from the repository:
-   ```bash
-   make install
-   ```
+2. If it is not running, install again with the `curl` line under [Installation](#installation), or `make install` in the repository.
 
 3. On macOS 26 and later, check System Settings → Menu Bar: the Blackout item can be hidden there.
 
@@ -338,7 +357,10 @@ make test       # run the test suite (swift run blackout-tests)
 make bundle     # build .build/Blackout.app without installing it
 make install    # build and install
 make icon       # redraw the app icon after changing scripts/make-icon.swift
+make release VERSION=2.2   # publish a release
 ```
+
+`make release` runs `scripts/release.sh`: from a clean `main` in sync with GitHub, it sets the version in `Resources/Info.plist`, runs the tests, builds the bundle, commits "Release 2.2" with the tag `v2.2`, pushes both and publishes `Blackout.zip` as a GitHub release, with the commits since the previous release as its notes. It needs the GitHub CLI (`gh`), logged in. Every release names its zip `Blackout.zip`, so `releases/latest/download/Blackout.zip` always serves the newest; installed copies find it through `BlackoutReleaseFeed` in `Info.plist`.
 
 Code is organized as a `BlackoutCore` library holding all the logic, with two
 thin executables on top: `blackout` (the CLI) and `blackout-menu` (the menu
@@ -355,6 +377,12 @@ Testing bundles with Command Line Tools alone (no full Xcode required this way).
 ```bash
 blackout uninstall    # removes the app, the command and the LaunchAgent; keeps your settings
 ./uninstall.sh        # removes everything, including settings and the sudo rule
+```
+
+Without a copy of the repository, run `uninstall.sh` straight from GitHub:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mhosavic/blackout/main/uninstall.sh | bash
 ```
 
 Both turn blackout off first if it is on.
