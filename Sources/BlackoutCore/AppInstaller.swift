@@ -29,6 +29,10 @@ public enum AppInstaller {
         if hadAgent {
             Shell.run("/bin/launchctl", ["unload", PathManager.launchAgentPlist.path])
         }
+        // A copy reopened from Finder after Quit runs outside launchd, so
+        // the unload leaves it running, and the new app would find it and
+        // step aside: the old version would stay in the menu bar
+        stopRunningMenuApp()
 
         do {
             if source.standardizedFileURL != destination.standardizedFileURL {
@@ -162,6 +166,17 @@ public enum AppInstaller {
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
               SleepController.processName(pid: pid) == "blackout-menu" else { return nil }
         return pid
+    }
+
+    /// Ask the menu bar app to quit, if one is running, and give it two
+    /// seconds to go
+    private static func stopRunningMenuApp() {
+        guard let pid = runningMenuAppPID() else { return }
+        kill(pid, SIGTERM)
+        let deadline = Date().addingTimeInterval(2)
+        while SleepController.processName(pid: pid) == "blackout-menu", Date() < deadline {
+            usleep(50_000)
+        }
     }
 
     /// Put a copy of `source` at `destination`, replacing what is there.

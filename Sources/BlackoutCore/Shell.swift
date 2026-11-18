@@ -96,13 +96,53 @@ enum Shell {
 
         var pid: pid_t = 0
         guard posix_spawn(&pid, path, nil, nil, argv, environ) == 0 else { return nil }
+        return waitForExit(pid)
+    }
 
+    /// Start a command in a session of its own and return its PID without
+    /// waiting: it survives whatever stops its parent's process group.
+    /// stdin is /dev/null; stdout and stderr are appended to `output`; no
+    /// other descriptor is inherited. SIGTERM and SIGINT start at their
+    /// defaults, since the menu bar app ignores both to handle them itself.
+    static func spawnDetached(_ path: String, _ arguments: [String], output: URL) -> pid_t? {
+        var argv: [UnsafeMutablePointer<CChar>?] = ([path] + arguments).map { strdup($0) }
+        argv.append(nil)
+        defer { argv.forEach { free($0) } }
+
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        let flags = POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_CLOEXEC_DEFAULT
+        posix_spawnattr_setflags(&attributes, Int16(flags))
+        var defaults = sigset_t()
+        sigemptyset(&defaults)
+        sigaddset(&defaults, SIGTERM)
+        sigaddset(&defaults, SIGINT)
+        posix_spawnattr_setsigdefault(&attributes, &defaults)
+        var unblocked = sigset_t()
+        sigemptyset(&unblocked)
+        posix_spawnattr_setsigmask(&attributes, &unblocked)
+
+        var files: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&files)
+        defer { posix_spawn_file_actions_destroy(&files) }
+        posix_spawn_file_actions_addopen(&files, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_addopen(&files, 1, output.path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+        posix_spawn_file_actions_adddup2(&files, 1, 2)
+
+        var pid: pid_t = 0
+        guard posix_spawn(&pid, path, &files, &attributes, argv, environ) == 0 else { return nil }
+        return pid
+    }
+
+    /// Wait for a child to end and return its exit code, mapping a signal
+    /// death to the shell convention of 128 + signal (-1 if it cannot be
+    /// waited for)
+    static func waitForExit(_ pid: pid_t) -> Int32 {
         var status: Int32 = 0
         while waitpid(pid, &status, 0) == -1 {
-            if errno != EINTR { return nil }
+            if errno != EINTR { return -1 }
         }
-        // Extract the exit code from the wait status, mapping a signal
-        // death to the shell convention of 128 + signal
         if (status & 0x7f) == 0 {
             return (status >> 8) & 0xff
         }

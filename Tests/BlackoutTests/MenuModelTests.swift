@@ -202,4 +202,48 @@ struct MenuModelTests {
         #expect(!items.contains(.header("This session")))
         #expect(warnings(items) == ["Turn Off clears the state file; brightness, volume or sleep may need restoring by hand"])
     }
+
+    // MARK: - Updates
+
+    /// The rows between the last separator and Open Log
+    private func updateRows(version: String?, _ update: UpdateState) -> [MenuItemModel] {
+        let items = MenuModel.build(
+            state: nil, stateFileExists: false, externalOnline: false,
+            settings: Settings(), health: healthy,
+            version: version.flatMap { Version($0) }, update: update,
+            now: now, calendar: utc)
+        guard let openLog = items.firstIndex(of: .action(title: "Open Log", action: .openLog, showsHotkey: false)),
+              let separator = items[..<openLog].lastIndex(of: .separator) else { return [] }
+        return Array(items[(separator + 1)..<openLog])
+    }
+
+    private let checkForUpdates = MenuItemModel.action(title: "Check for Updates…", action: .checkForUpdates, showsHotkey: false)
+
+    @Test func showsTheVersionAndACheckBeforeAnyAnswer() {
+        #expect(updateRows(version: "2.1", .unknown) == [.info("Blackout 2.1"), checkForUpdates])
+    }
+
+    @Test func saysWhenUpToDate() {
+        #expect(updateRows(version: "2.1", .upToDate) == [.info("Blackout 2.1 · up to date"), checkForUpdates])
+    }
+
+    @Test func offersAnAvailableUpdate() {
+        #expect(updateRows(version: "2.1", .available(Version("2.2")!)) == [
+            .info("Blackout 2.1 · 2.2 is available"),
+            .action(title: "Update to 2.2", action: .installUpdate, showsHotkey: false)
+        ])
+    }
+
+    /// Nothing to click while an update downloads: a second click would
+    /// start a second install
+    @Test func showsAnUpdateInProgressWithNothingToClick() {
+        #expect(updateRows(version: "2.1", .installing(Version("2.2")!)) == [.info("Blackout 2.1 · updating to 2.2…")])
+    }
+
+    /// A build run outside a bundle has no version to compare: no rows,
+    /// and Open Log and Quit still close the menu
+    @Test func aBuildWithoutAVersionHasNoUpdateRows() {
+        #expect(updateRows(version: nil, .unknown) == [])
+        #expect(updateRows(version: nil, .available(Version("2.2")!)) == [])
+    }
 }

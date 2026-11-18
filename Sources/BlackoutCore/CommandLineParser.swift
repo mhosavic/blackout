@@ -37,6 +37,8 @@ public enum Command: Equatable {
     case install
     case uninstall
     case setupLid
+    /// Download and install the latest release, if newer
+    case update
     /// Internal: the detached watcher a session spawns
     case lidWatch
     case help
@@ -58,6 +60,7 @@ public enum CommandLineParser {
         "install": .install, "--install": .install,
         "uninstall": .uninstall, "--uninstall": .uninstall,
         "setup-lid": .setupLid, "--setup-lid": .setupLid,
+        "update": .update,
         "--lid-watch": .lidWatch,
         "help": .help, "--help": .help, "-h": .help
     ]

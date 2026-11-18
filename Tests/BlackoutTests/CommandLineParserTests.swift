@@ -30,6 +30,7 @@ struct CommandLineParserTests {
         #expect(parse("install") == .install)
         #expect(parse("uninstall") == .uninstall)
         #expect(parse("setup-lid") == .setupLid)
+        #expect(parse("update") == .update)
         #expect(parse("help") == .help)
     }
 
@@ -117,6 +118,7 @@ struct CommandLineParserTests {
         #expect(error("off", "-e") != nil)
         #expect(error("status", "--no-mute") != nil)
         #expect(error("config", "--lock") != nil)
+        #expect(error("update", "--mute") != nil)
     }
 
     @Test func twoCommandsAreAnError() {

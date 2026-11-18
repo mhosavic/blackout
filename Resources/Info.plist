@@ -22,5 +22,7 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>BlackoutReleaseFeed</key>
+    <string>https://api.github.com/repos/mhosavic/blackout/releases/latest</string>
 </dict>
 </plist>

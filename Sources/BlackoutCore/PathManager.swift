@@ -63,6 +63,12 @@ public struct PathManager {
         blackoutDirectory.appendingPathComponent("daemon.pid")
     }
 
+    /// ~/.blackout/update/ — the release being installed, emptied before
+    /// each download
+    public static var updateDirectory: URL {
+        blackoutDirectory.appendingPathComponent("update")
+    }
+
     /// ~/.blackout/lock — held while a session is being started or ended
     public static var lockFile: URL {
         blackoutDirectory.appendingPathComponent("lock")

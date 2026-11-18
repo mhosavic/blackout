@@ -8,6 +8,9 @@ public enum MenuAction: Equatable {
     case set(key: String, value: String)
     /// Open the window that records a new global shortcut
     case changeHotkey
+    case checkForUpdates
+    /// Download and install the release the last check found
+    case installUpdate
     case openLog
     case quit
 }
@@ -28,13 +31,16 @@ public enum MenuModel {
 
     /// Build the whole menu from what is on disk right now. `state` is nil
     /// with `stateFileExists` true when the file cannot be read. `health` is
-    /// the last known setup check.
+    /// the last known setup check. `version` is nil for a build that is not
+    /// in a bundle, which has nothing to update.
     public static func build(
         state: BlackoutState?,
         stateFileExists: Bool,
         externalOnline: Bool,
         settings: Settings,
         health: Health,
+        version: Version? = nil,
+        update: UpdateState = .unknown,
         now: Date,
         calendar: Calendar = .current
     ) -> [MenuItemModel] {
@@ -95,9 +101,31 @@ public enum MenuModel {
             items.append(.separator)
         }
 
+        if let version {
+            items += updateRows(version: version, update: update)
+        }
         items.append(.action(title: "Open Log", action: .openLog, showsHotkey: false))
         items.append(.action(title: "Quit Blackout", action: .quit, showsHotkey: false))
         return items
+    }
+
+    /// The running version, what the last check found, and the one thing
+    /// to click about it
+    private static func updateRows(version: Version, update: UpdateState) -> [MenuItemModel] {
+        let check = MenuItemModel.action(title: "Check for Updates…", action: .checkForUpdates, showsHotkey: false)
+        switch update {
+        case .unknown:
+            return [.info("Blackout \(version)"), check]
+        case .upToDate:
+            return [.info("Blackout \(version) · up to date"), check]
+        case .available(let newer):
+            return [
+                .info("Blackout \(version) · \(newer) is available"),
+                .action(title: "Update to \(newer)", action: .installUpdate, showsHotkey: false)
+            ]
+        case .installing(let newer):
+            return [.info("Blackout \(version) · updating to \(newer)…")]
+        }
     }
 
     /// Only for a behavior that is switched on and cannot work: a missing

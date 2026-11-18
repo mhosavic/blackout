@@ -90,7 +90,8 @@ let hotkeyManager = HotkeyManager {
     }
 }
 let hotkeyRecorder = HotkeyRecorder(hotkeyManager: hotkeyManager)
-let statusItemController = StatusItemController(toggler: toggler, onChangeHotkey: {
+let updateController = UpdateController()
+let statusItemController = StatusItemController(toggler: toggler, updates: updateController, onChangeHotkey: {
     hotkeyRecorder.show()
 })
 refreshStatusIcon = { statusItemController.refreshIcon() }

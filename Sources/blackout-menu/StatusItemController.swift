@@ -9,6 +9,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let toggler: Toggler
+    private let updates: UpdateController
     private let onChangeHotkey: () -> Void
     /// The shortcut shown beside Turn On / Turn Off, as of the last build
     private var shownHotkey = Hotkey.default
@@ -21,8 +22,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var actions: [MenuAction] = []
     private var refreshTimer: Timer?
 
-    init(toggler: Toggler, onChangeHotkey: @escaping () -> Void) {
+    init(toggler: Toggler, updates: UpdateController, onChangeHotkey: @escaping () -> Void) {
         self.toggler = toggler
+        self.updates = updates
         self.onChangeHotkey = onChangeHotkey
         super.init()
 
@@ -77,6 +79,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             externalOnline: ExternalDisplayController.isExternalDisplayOnline(),
             settings: settings,
             health: health,
+            version: updates.version,
+            update: updates.state,
             now: Date()
         )
         actions = []
@@ -172,6 +176,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
         case .changeHotkey:
             onChangeHotkey()
+        case .checkForUpdates:
+            updates.check(manual: true)
+        case .installUpdate:
+            updates.installAvailable()
         case .openLog:
             NSWorkspace.shared.open(PathManager.daemonLog)
         case .quit:

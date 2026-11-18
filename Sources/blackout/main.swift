@@ -14,6 +14,7 @@ Usage:
   blackout hotkey [default]            Pick a new global shortcut, or go back to the default
   blackout install                     Install the menu bar app and hotkey (via 'make install')
   blackout uninstall                   Remove the menu bar app and hotkey
+  blackout update                      Install the latest release, if it is newer
   blackout setup-lid                   One-time setup so blackout can keep the Mac awake
                                        with the lid closed (writes /etc/sudoers.d/blackout)
   blackout help
@@ -179,6 +180,37 @@ func changeHotkey(reset: Bool) {
     print("Press the new shortcut in the Blackout Hotkey window.")
 }
 
+func update() {
+    guard let app = Updater.runningApp(),
+          let current = Updater.version(ofApp: app),
+          let feed = Updater.feed(ofApp: app) else {
+        printStandardError("'blackout update' has to run from an installed Blackout.app.")
+        printStandardError("In the repository, run: git pull && make install")
+        exit(1)
+    }
+
+    print("Blackout \(current) is installed. Checking for a newer release...")
+    do {
+        switch try Updater.check(feed: feed, current: current) {
+        case .upToDate:
+            print("Blackout \(current) is the latest release.")
+        case .available(let release):
+            print("Downloading Blackout \(release.version)...")
+            let downloaded = try Updater.download(release, into: PathManager.updateDirectory)
+            print("")
+            // The installer writes to the same output; ours must come first
+            fflush(stdout)
+            guard Updater.installInForeground(downloaded) == 0 else {
+                printStandardError("Installing Blackout \(release.version) failed; the lines above say why.")
+                exit(1)
+            }
+        }
+    } catch {
+        printStandardError("Could not update: \(error.localizedDescription)")
+        exit(1)
+    }
+}
+
 /// The detached watcher a session spawns. Not in the help — users never run
 /// it directly, but it is visible in `ps` as `blackout --lid-watch`.
 func watchLid() -> Never {
@@ -232,6 +264,8 @@ case .success(let command):
         AppInstaller.uninstall()
     case .setupLid:
         SleepController.setupLid()
+    case .update:
+        update()
     case .lidWatch:
         watchLid()
     case .help:
