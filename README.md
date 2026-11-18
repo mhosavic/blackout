@@ -4,6 +4,14 @@
 
 Black out your Mac screen while it keeps working. One hotkey, one menu bar icon, one command.
 
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mhosavic/blackout/main/install.sh | bash
+```
+
+Apple Silicon, macOS 14 or later, no Xcode tools needed. Blackout updates itself from then on. In a clone of this repository, `./install.sh` does the same. Installing with a coding agent: [AGENTS.md](AGENTS.md) has the steps.
+
 ## Features
 
 - **Blacks out the screen** - dims the built-in display to 0%
@@ -26,11 +34,7 @@ Black out your Mac screen while it keeps working. One hotkey, one menu bar icon,
 
 ## Installation
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/mhosavic/blackout/main/install.sh | bash
-```
-
-This downloads `Blackout.app` (the menu bar app and the `blackout` command together) from the latest release, and:
+The [install line](#install) downloads `Blackout.app` (the menu bar app and the `blackout` command together) from the latest release, and:
 
 - installs it to `~/Applications/Blackout.app`
 - links the command at `~/bin/blackout` (add `~/bin` to your `PATH` to use it from a terminal)
@@ -255,7 +259,7 @@ The menu bar app holds no state of its own: the icon and the menu are drawn from
    blackout status
    ```
 
-2. If it is not running, install again with the `curl` line under [Installation](#installation), or `make install` in the repository.
+2. If it is not running, install again with the `curl` line under [Install](#install), or `make install` in the repository.
 
 3. On macOS 26 and later, check System Settings → Menu Bar: the Blackout item can be hidden there.
 
