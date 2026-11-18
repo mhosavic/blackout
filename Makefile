@@ -3,10 +3,11 @@
 #   make test      run the test suite
 #   make install   build, bundle and install the menu bar app and the CLI
 #   make uninstall remove everything, including settings and the sudo rule
+#   make release VERSION=2.1   publish a release to GitHub (scripts/release.sh)
 
 APP := .build/Blackout.app
 
-.PHONY: build test bundle install uninstall icon
+.PHONY: build test bundle install uninstall release icon
 
 build:
 	swift build -c release
@@ -29,6 +30,10 @@ install: bundle
 
 uninstall:
 	./uninstall.sh
+
+# Tag, build and publish Blackout.zip; installed copies update from it
+release:
+	./scripts/release.sh $(VERSION)
 
 # Redraw the app icon (only needed after changing scripts/make-icon.swift)
 icon:
